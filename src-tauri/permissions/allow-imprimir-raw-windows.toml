@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-imprimir-raw-windows"
+description = "Permite imprimir directamente al spooler RAW de Windows."
+commands.allow = ["imprimir_raw_windows", "listar_impresoras_windows"]

@@ -1,0 +1,1 @@
+ALTER TABLE public.pedidos_logistica ADD COLUMN IF NOT EXISTS iniciado_por_bodega BOOLEAN NOT NULL DEFAULT false;

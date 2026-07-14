@@ -1,0 +1,1 @@
+CREATE POLICY "sabores_extra_select_authenticated" ON public.sabores_extra FOR SELECT TO authenticated USING (true);

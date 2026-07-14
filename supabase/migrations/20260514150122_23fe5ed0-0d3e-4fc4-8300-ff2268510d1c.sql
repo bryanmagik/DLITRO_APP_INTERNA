@@ -1,0 +1,5 @@
+ALTER TYPE tipo_pedido ADD VALUE IF NOT EXISTS 'local';
+ALTER TYPE tipo_pedido ADD VALUE IF NOT EXISTS 'delivery';
+ALTER TYPE tipo_pedido ADD VALUE IF NOT EXISTS 'uber';
+ALTER TYPE tipo_pedido ADD VALUE IF NOT EXISTS 'rappi';
+ALTER TABLE pedidos ADD COLUMN IF NOT EXISTS hora_agendada TIMESTAMPTZ;

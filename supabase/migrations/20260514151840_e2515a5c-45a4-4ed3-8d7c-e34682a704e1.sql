@@ -1,0 +1,1 @@
+ALTER TYPE public.tipo_pedido ADD VALUE 'puerta';

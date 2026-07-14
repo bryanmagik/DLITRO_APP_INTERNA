@@ -1,0 +1,400 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* dlitro — light */
+    --background: 0 0% 100%;            /* #FFFFFF */
+    --foreground: 0 0% 7%;              /* #111111 */
+
+    --card: 0 0% 97%;                   /* #F8F8F8 */
+    --card-foreground: 0 0% 7%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 7%;
+
+    --primary: 142 71% 45%;             /* #22C55E verde dlitro */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 94%;              /* #F0F0F0 */
+    --secondary-foreground: 0 0% 7%;
+
+    --muted: 0 0% 94%;
+    --muted-foreground: 0 0% 40%;       /* #666666 */
+
+    --accent: 142 71% 45%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 55%;           /* #EF4444 */
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 71% 45%;             /* #22C55E */
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;              /* #F59E0B */
+    --warning-foreground: 0 0% 7%;
+    --info: 217 91% 55%;                /* #3B82F6 */
+    --info-foreground: 0 0% 100%;
+
+    --border: 0 0% 90%;                 /* #E5E5E5 */
+    --input: 0 0% 90%;
+    --ring: 142 71% 45%;
+
+    --radius: 0.625rem;
+
+    --sidebar-background: 0 0% 94%;     /* #F0F0F0 */
+    --sidebar-foreground: 0 0% 15%;
+    --sidebar-primary: 142 71% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 88%;
+    --sidebar-accent-foreground: 0 0% 7%;
+    --sidebar-border: 0 0% 88%;
+    --sidebar-ring: 142 71% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 0.02em;
+  }
+
+  .label-upper {
+    @apply uppercase tracking-wider text-xs font-semibold text-muted-foreground;
+  }
+}
+
+/* ============================================
+   Glassmorphism theme (iOS-style)
+   Applied via .glass-theme wrapper on layouts
+   except the Tomador de Pedidos (/turno) views.
+   ============================================ */
+.glass-theme {
+  transition: background 0.4s ease, color 0.4s ease;
+}
+
+/* Login page animations */
+@keyframes login-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-8px); }
+  40%, 80% { transform: translateX(8px); }
+}
+.animate-shake { animation: login-shake 0.4s ease-in-out; }
+
+@keyframes login-blob {
+  0%, 100% { transform: translate(0,0) scale(1); }
+  33% { transform: translate(30px,-40px) scale(1.1); }
+  66% { transform: translate(-20px,20px) scale(0.95); }
+}
+.animate-blob { animation: login-blob 12s ease-in-out infinite; }
+.glass-theme.glass-dark {
+  --background: 222 47% 11%;
+  --foreground: 0 0% 100%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 100%;
+  --popover: 222 47% 14%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 142 71% 45%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 100%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 0 0% 100%;
+  --muted-foreground: 0 0% 70%;
+  --accent: 142 71% 45%;
+  --accent-foreground: 0 0% 100%;
+  --border: 0 0% 100%;
+  --input: 0 0% 100%;
+  --ring: 142 71% 55%;
+  --sidebar-background: 222 47% 11%;
+  --sidebar-foreground: 0 0% 100%;
+  --sidebar-accent: 0 0% 100%;
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-border: 0 0% 100%;
+
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  background-attachment: fixed;
+  color: #fff;
+}
+
+/* Light glassmorphism (iOS) */
+.glass-theme.glass-light {
+  --background: 220 60% 96%;
+  --foreground: 230 35% 14%;
+  --card: 0 0% 100%;
+  --card-foreground: 230 35% 14%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 230 35% 14%;
+  --primary: 142 71% 45%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 60% 96%;
+  --secondary-foreground: 230 35% 14%;
+  --muted: 220 40% 92%;
+  --muted-foreground: 230 20% 35%;
+  --accent: 142 71% 45%;
+  --accent-foreground: 0 0% 100%;
+  --border: 220 40% 85%;
+  --input: 220 40% 85%;
+  --ring: 142 71% 45%;
+  --sidebar-background: 220 60% 96%;
+  --sidebar-foreground: 230 35% 14%;
+  --sidebar-accent: 220 40% 90%;
+  --sidebar-accent-foreground: 230 35% 14%;
+  --sidebar-border: 220 40% 85%;
+
+  background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 50%, #dce8fd 100%);
+  background-attachment: fixed;
+  color: #1a1a2e;
+}
+
+.glass-theme.glass-light .border-border,
+.glass-theme.glass-light [class*="border-border"] {
+  border-color: rgba(100, 120, 200, 0.2) !important;
+}
+.glass-theme.glass-light .bg-card,
+.glass-theme.glass-light [class*="bg-card"] {
+  background: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(100, 120, 200, 0.15);
+  color: #1a1a2e;
+}
+.glass-theme.glass-light .bg-card:hover {
+  border-color: rgba(100, 120, 200, 0.35) !important;
+  transform: translateY(-2px);
+}
+.glass-theme.glass-light .bg-secondary,
+.glass-theme.glass-light .bg-secondary\/40,
+.glass-theme.glass-light .bg-secondary\/20,
+.glass-theme.glass-light .bg-muted {
+  background: rgba(255, 255, 255, 0.55) !important;
+}
+.glass-theme.glass-light .app-header {
+  background: rgba(255, 255, 255, 0.6) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(100, 120, 200, 0.15) !important;
+}
+.glass-theme.glass-light [data-sidebar="sidebar"],
+.glass-theme.glass-light .bg-sidebar {
+  background: rgba(255, 255, 255, 0.5) !important;
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border-right: 1px solid rgba(100, 120, 200, 0.15) !important;
+  color: #1a1a2e;
+}
+.glass-theme.glass-light [data-sidebar="menu-button"]:hover {
+  background: rgba(100, 120, 200, 0.1) !important;
+}
+.glass-theme.glass-light [data-sidebar="menu-button"][data-active="true"] {
+  background: rgba(34, 197, 94, 0.15) !important;
+  color: #1a1a2e !important;
+}
+.glass-theme.glass-light .bg-primary {
+  background: #22C55E !important;
+  color: #fff !important;
+}
+.glass-theme.glass-light .bg-primary:hover {
+  background: #16a34a !important;
+}
+.glass-theme.glass-light input,
+.glass-theme.glass-light textarea,
+.glass-theme.glass-light select,
+.glass-theme.glass-light [role="combobox"] {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid rgba(100, 120, 200, 0.2) !important;
+  color: #1a1a2e !important;
+}
+.glass-theme.glass-light input::placeholder,
+.glass-theme.glass-light textarea::placeholder {
+  color: rgba(30, 30, 60, 0.4);
+}
+.glass-theme.glass-light table thead {
+  background: rgba(255, 255, 255, 0.6) !important;
+}
+.glass-theme.glass-light table tbody tr {
+  background: rgba(255, 255, 255, 0.3);
+}
+.glass-theme.glass-light table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.5);
+}
+.glass-theme.glass-light table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.75);
+}
+.glass-theme.glass-light th,
+.glass-theme.glass-light td {
+  border-color: rgba(100, 120, 200, 0.12) !important;
+  color: #1a1a2e;
+}
+.glass-theme.glass-light .text-muted-foreground {
+  color: rgba(30, 30, 60, 0.6) !important;
+}
+.glass-theme.glass-light .text-foreground {
+  color: #1a1a2e !important;
+}
+.glass-theme.glass-light [role="dialog"] {
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(100, 120, 200, 0.2) !important;
+  color: #1a1a2e;
+}
+
+/* Force transparent borders/backgrounds to play nice with rgba overlays */
+.glass-theme .border-border,
+.glass-theme [class*="border-border"] {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Cards & panels */
+.glass-theme .bg-card,
+.glass-theme [class*="bg-card"] {
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+  color: #fff;
+}
+.glass-theme .bg-card:hover {
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  transform: translateY(-2px);
+}
+
+/* Secondary/muted surfaces */
+.glass-theme .bg-secondary,
+.glass-theme .bg-secondary\/40,
+.glass-theme .bg-secondary\/20,
+.glass-theme .bg-muted {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Header */
+.glass-theme .app-header {
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Sidebar */
+.glass-theme [data-sidebar="sidebar"],
+.glass-theme .bg-sidebar {
+  background: rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #fff;
+}
+.glass-theme [data-sidebar="menu-button"]:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+.glass-theme [data-sidebar="menu-button"][data-active="true"] {
+  background: rgba(34, 197, 94, 0.18) !important;
+  color: #fff !important;
+}
+
+/* Buttons */
+.glass-theme .bg-primary {
+  background: rgba(34, 197, 94, 0.8) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #fff !important;
+}
+.glass-theme .bg-primary:hover {
+  background: rgba(34, 197, 94, 0.95) !important;
+}
+.glass-theme button[class*="variant"][class*="outline"],
+.glass-theme .border-input {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #fff;
+}
+
+/* Inputs / textarea / select */
+.glass-theme input,
+.glass-theme textarea,
+.glass-theme select,
+.glass-theme [role="combobox"] {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+.glass-theme input::placeholder,
+.glass-theme textarea::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* Tables */
+.glass-theme table thead {
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+.glass-theme table tbody tr {
+  background: rgba(255, 255, 255, 0.03);
+  transition: background 0.2s ease;
+}
+.glass-theme table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.07);
+}
+.glass-theme table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.glass-theme th,
+.glass-theme td {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #fff;
+}
+
+/* Text helpers */
+.glass-theme .text-muted-foreground {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+.glass-theme .text-foreground {
+  color: #fff !important;
+}
+
+/* Badges */
+.glass-theme .bg-success\/15,
+.glass-theme [class*="bg-success/"] {
+  background: rgba(34, 197, 94, 0.2) !important;
+  color: #86efac !important;
+}
+.glass-theme [class*="bg-destructive/"] {
+  background: rgba(239, 68, 68, 0.2) !important;
+  color: #fca5a5 !important;
+}
+
+/* Modals overlay */
+.glass-theme [data-radix-dialog-overlay],
+[data-radix-dialog-overlay].glass-overlay {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.4) !important;
+}
+.glass-theme [role="dialog"] {
+  background: rgba(30, 35, 60, 0.85) !important;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: #fff;
+}
+
+/* Global smooth transitions */
+.glass-theme * {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
+}

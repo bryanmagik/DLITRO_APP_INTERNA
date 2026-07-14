@@ -1,0 +1,1 @@
+ALTER TABLE public.inventario_cierre ADD COLUMN IF NOT EXISTS conteo_original TEXT;

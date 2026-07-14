@@ -1,0 +1,10 @@
+project_id = "uwymxjmyasnlmkitzvej"
+
+[functions.recibir-pedido-online]
+verify_jwt = false
+
+[functions.recibir-pedido-nely]
+verify_jwt = false
+
+[functions.crear-usuario]
+verify_jwt = false
