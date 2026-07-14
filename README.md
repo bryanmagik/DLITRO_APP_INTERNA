@@ -1,3 +1,2 @@
-# Welcome to your Lovable project
-
-TODO: Document your project here
+# DLITRO_APP_INTERNA
+app interna de dlitro para la toma de pedidos
