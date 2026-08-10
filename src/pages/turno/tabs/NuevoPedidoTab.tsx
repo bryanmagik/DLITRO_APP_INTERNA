@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus, Minus, Trash2, Search, Gift, Cake, KeyRound, Trophy, Sparkles, Clock, Store, Truck, Car, Bike, DoorOpen, Wine, Droplet, User, Briefcase, CreditCard, Save, CalendarClock, X, Banknote, Landmark, Pencil } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthStore } from "@/stores/authStore";
@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import type { Turno } from "../TurnoPage";
-import { formatSaborExtra } from "@/lib/printComanda";
+import { formatSaborExtra, normalizarTipoComanda } from "@/lib/printComanda";
 import { imprimirAmbas } from "@/services/printer";
 import { buildComandaCocinaItems, buildNotasClienteDeItem } from "@/lib/pedidoImpresion";
 import { referenciaPagoTransferencia } from "@/lib/referenciaPago";
@@ -30,6 +30,7 @@ interface Producto {
   imagen_url?: string | null;
   precioOriginal?: number;
   esPrecioEspecial?: boolean;
+  esPrecioTrabajador?: boolean;
 }
 interface Sucursal { id: string; latitud: number | null; longitud: number | null; clave_canje: string | null }
 type PromoTipo = "cumpleanos" | "canje" | "jarra_dorada" | "jarros_retornables";
@@ -50,9 +51,10 @@ function calcularTragosGratisJarros(lineas: Linea[], seleccion: string[]) {
     if (!l || l.esRegalo) continue;
     const yaFree = freeByUid.get(uid) ?? 0;
     if (yaFree >= l.cantidad) continue;
-    const pu = l.producto.precio + (l.extras?.reduce((a, e) => a + e.precio, 0) ?? 0);
+    // Solo precio base del producto — los extras ($1.000 c/u) se siguen cobrando
+    const precioBase = l.producto.precio;
     freeByUid.set(uid, yaFree + 1);
-    descuento += pu;
+    descuento += precioBase;
   }
   return { freeByUid, descuento };
 }
@@ -103,6 +105,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
   const [loading, setLoading] = useState(true);
   const [promoSaborId, setPromoSaborId] = useState<string | null>(null);
   const [promosPrecio, setPromosPrecio] = useState<Array<{ producto_id: string; precio_promo: number; nombre: string | null }>>([]);
+  const [preciosTrabajador, setPreciosTrabajador] = useState<Map<string, number>>(new Map());
   const [jarraDoradaDias, setJarraDoradaDias] = useState<string[]>(["lunes", "sabado"]);
   const [jarraDoradaUsada, setJarraDoradaUsada] = useState(false);
   const [saboresExtra, setSaboresExtra] = useState<SaborExtra[]>([]);
@@ -145,23 +148,54 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
 
   const [yaPago, setYaPago] = useState(false);
   const [metodoPagoEsperado, setMetodoPagoEsperado] = useState<"efectivo" | "transferencia" | "tarjeta" | null>(null);
-  const [metodoPagoCrear, setMetodoPagoCrear] = useState<"efectivo" | "transferencia" | "tarjeta" | "mixto">("efectivo");
-  const [montoRecibidoCrear, setMontoRecibidoCrear] = useState("");
-  const [referenciaPagoCrear, setReferenciaPagoCrear] = useState("");
   const [pagoMixtoEf, setPagoMixtoEf] = useState("");
   const [pagoMixtoTr, setPagoMixtoTr] = useState("");
   const [pagoMixtoTa, setPagoMixtoTa] = useState("");
   const [pagoMixtoTrRef, setPagoMixtoTrRef] = useState("");
-
-  const referenciaPagoTouched = useRef(false);
   const pagoMixtoTrRefTouched = useRef(false);
+
+  const [proximoPedido, setProximoPedido] = useState<number>(
+    () => (turno.numero_ultimo_pedido ?? 0) + 1,
+  );
+
+  const refrescarProximoPedido = async () => {
+    const { data } = await supabase
+      .from("turnos")
+      .select("numero_ultimo_pedido")
+      .eq("id", turno.id)
+      .single();
+    const n = (data as { numero_ultimo_pedido: number | null } | null)?.numero_ultimo_pedido ?? 0;
+    setProximoPedido(n + 1);
+  };
+
+  useEffect(() => {
+    void refrescarProximoPedido();
+    const ch = supabase
+      .channel(`turno-num-pedido-${turno.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "turnos", filter: `id=eq.${turno.id}` },
+        (payload) => {
+          const n = (payload.new as { numero_ultimo_pedido?: number | null })?.numero_ultimo_pedido ?? 0;
+          setProximoPedido(n + 1);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "pedidos", filter: `turno_id=eq.${turno.id}` },
+        () => { void refrescarProximoPedido(); },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(ch); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turno.id]);
 
   const tipoCfg = TIPO_META[tipo];
   const esExterno = tipoCfg.esExterno;
 
   useEffect(() => {
     (async () => {
-      const [pRes, cRes, sRes, promoRes, jarraRes, sxRes, preciosRes] = await Promise.all([
+      const [pRes, cRes, sRes, promoRes, jarraRes, sxRes, preciosRes, ptRes] = await Promise.all([
         supabase.from("productos").select("*").eq("activo", true).order("nombre"),
         supabase.from("categorias").select("*").order("orden"),
         supabase.from("sucursales").select("id,latitud,longitud,clave_canje").eq("id", turno.sucursal_id).maybeSingle(),
@@ -169,6 +203,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
         supabase.from("promociones").select("dias_activos").eq("tipo", "jarra_dorada").maybeSingle(),
         supabase.from("sabores_extra").select("id,nombre,precio").eq("activo", true).order("nombre"),
         supabase.from("promociones_precio").select("producto_id,precio_promo,nombre").eq("activo", true),
+        supabase.from("precios_trabajador").select("producto_id, precio_trabajador").eq("activo", true),
       ]);
       setProductos((pRes.data as Producto[]) ?? []);
       setCategorias((cRes.data as Categoria[]) ?? []);
@@ -180,6 +215,11 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
       }
       setSaboresExtra((sxRes.data as SaborExtra[]) ?? []);
       setPromosPrecio((preciosRes.data as Array<{ producto_id: string; precio_promo: number; nombre: string | null }>) ?? []);
+      const ptMap = new Map<string, number>();
+      for (const row of (ptRes.data as Array<{ producto_id: string; precio_trabajador: number }> | null) ?? []) {
+        ptMap.set(row.producto_id, Number(row.precio_trabajador));
+      }
+      setPreciosTrabajador(ptMap);
       const { data: jd } = await supabase
         .from("pedidos").select("id").eq("turno_id", turno.id).eq("es_jarra_dorada", true).limit(1);
       setJarraDoradaUsada((jd ?? []).length > 0);
@@ -190,11 +230,12 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
   // Realtime: refrescar catálogo y promo cuando cambien
   useEffect(() => {
     const refetch = async () => {
-      const [pRes, promoRes, jarraRes, preciosRes] = await Promise.all([
+      const [pRes, promoRes, jarraRes, preciosRes, ptRes] = await Promise.all([
         supabase.from("productos").select("*").eq("activo", true).order("nombre"),
         supabase.from("promociones").select("producto_id,activo").eq("tipo", "sabor_del_dia").maybeSingle(),
         supabase.from("promociones").select("dias_activos").eq("tipo", "jarra_dorada").maybeSingle(),
         supabase.from("promociones_precio").select("producto_id,precio_promo,nombre").eq("activo", true),
+        supabase.from("precios_trabajador").select("producto_id, precio_trabajador").eq("activo", true),
       ]);
       setProductos((pRes.data as Producto[]) ?? []);
       const pr = promoRes.data as { producto_id: string; activo: boolean | null } | null;
@@ -204,11 +245,17 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
         setJarraDoradaDias(jarraData.dias_activos);
       }
       setPromosPrecio((preciosRes.data as Array<{ producto_id: string; precio_promo: number; nombre: string | null }>) ?? []);
+      const ptMap = new Map<string, number>();
+      for (const row of (ptRes.data as Array<{ producto_id: string; precio_trabajador: number }> | null) ?? []) {
+        ptMap.set(row.producto_id, Number(row.precio_trabajador));
+      }
+      setPreciosTrabajador(ptMap);
     };
     const ch = supabase
       .channel("promo-sabor-dia")
       .on("postgres_changes", { event: "*", schema: "public", table: "promociones" }, refetch)
       .on("postgres_changes", { event: "*", schema: "public", table: "promociones_precio" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "precios_trabajador" }, refetch)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "productos" }, refetch)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -222,14 +269,68 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
     return m;
   }, [promosPrecio]);
 
-  const productosConPromo = useMemo(() =>
-    productos.map((p) => {
-      if (p.id === promoSaborId) return { ...p, precio: PROMO_SABOR_PRECIO };
-      const pp = promosPrecioMap.get(p.id);
-      if (pp) return { ...p, precio: pp.precio_promo, precioOriginal: p.precio, esPrecioEspecial: true };
-      return p;
-    }),
-  [productos, promoSaborId, promosPrecioMap]);
+  const aplicarPrecioProducto = useCallback((p: Producto): Producto => {
+    const catalogo = productos.find((x) => x.id === p.id)?.precio ?? p.precio;
+    if (!esExterno && tipoCliente === "trabajador") {
+      const pt = preciosTrabajador.get(p.id);
+      if (pt != null) {
+        return {
+          ...p,
+          precio: pt,
+          precioOriginal: catalogo,
+          esPrecioEspecial: true,
+          esPrecioTrabajador: true,
+        };
+      }
+    }
+    if (p.id === promoSaborId) {
+      return { ...p, precio: PROMO_SABOR_PRECIO, precioOriginal: catalogo, esPrecioEspecial: true, esPrecioTrabajador: false };
+    }
+    const pp = promosPrecioMap.get(p.id);
+    if (pp) {
+      return {
+        ...p,
+        precio: pp.precio_promo,
+        precioOriginal: catalogo,
+        esPrecioEspecial: true,
+        esPrecioTrabajador: false,
+      };
+    }
+    return { ...p, precio: catalogo, precioOriginal: undefined, esPrecioEspecial: false, esPrecioTrabajador: false };
+  }, [esExterno, tipoCliente, preciosTrabajador, productos, promoSaborId, promosPrecioMap]);
+
+  const productosConPromo = useMemo(
+    () => productos.map((p) => aplicarPrecioProducto(p)),
+    [productos, aplicarPrecioProducto],
+  );
+
+  // Recalcular precios del carrito al cambiar Cliente/Trabajador
+  useEffect(() => {
+    setLineas((prev) => {
+      let changed = false;
+      const next = prev.map((l) => {
+        if (l.esRegalo) return l;
+        const base = productos.find((p) => p.id === l.producto.id);
+        if (!base) return l;
+        const priced = aplicarPrecioProducto(base);
+        if (
+          priced.precio === l.producto.precio &&
+          priced.precioOriginal === l.precioOriginal &&
+          !!priced.esPrecioTrabajador === !!l.producto.esPrecioTrabajador
+        ) {
+          return l;
+        }
+        changed = true;
+        return {
+          ...l,
+          producto: { ...l.producto, ...priced },
+          precioOriginal: priced.precioOriginal,
+          esPrecioEspecial: priced.esPrecioEspecial,
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [tipoCliente, aplicarPrecioProducto, productos]);
 
   const productosFiltrados = useMemo(() => {
     return productosConPromo.filter((p) => {
@@ -310,7 +411,28 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
   };
   const quitar = (uid: string) => setLineas((prev) => prev.filter((l) => l.uid !== uid));
 
-  const subtotal = useMemo(() => lineas.reduce((acc, l) => acc + precioLinea(l) * l.cantidad, 0), [lineas]);
+  const subtotalCobrado = useMemo(
+    () => lineas.reduce((acc, l) => acc + precioLinea(l) * l.cantidad, 0),
+    [lineas],
+  );
+
+  const subtotalNormal = useMemo(() => {
+    return lineas.reduce((acc, l) => {
+      if (l.esRegalo) return acc;
+      const catalogo = productos.find((p) => p.id === l.producto.id)?.precio
+        ?? l.precioOriginal
+        ?? l.producto.precio;
+      const extras = l.extras?.reduce((a, e) => a + e.precio, 0) ?? 0;
+      return acc + (catalogo + extras) * l.cantidad;
+    }, 0);
+  }, [lineas, productos]);
+
+  const descuentoTrabajador = !esExterno && tipoCliente === "trabajador"
+    ? Math.max(0, subtotalNormal - subtotalCobrado)
+    : 0;
+
+  // Pedido: subtotal a precio de lista; descuento incluye ahorro trabajador + jarros
+  const subtotal = !esExterno && tipoCliente === "trabajador" ? subtotalNormal : subtotalCobrado;
 
   const [distanciaApi, setDistanciaApi] = useState<number | null>(null);
   const [tarifasDespacho, setTarifasDespacho] = useState<TarifaDespacho[]>([]);
@@ -384,8 +506,17 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
   const descuentoJarrosTragos = tragosGratisInfo.descuento;
   const tragosGratisAplicados = Array.from(tragosGratisInfo.freeByUid.values()).reduce((a, b) => a + b, 0);
 
-  const desc = esExterno ? 0 : (parseInt(descuento || "0", 10) || 0) + descuentoJarrosSobrantes + descuentoJarrosTragos;
+  const desc = esExterno
+    ? 0
+    : (parseInt(descuento || "0", 10) || 0) + descuentoJarrosSobrantes + descuentoJarrosTragos + descuentoTrabajador;
   const total = Math.max(0, subtotal - desc + costoDespacho);
+
+  const pagoYaEf = parseInt(pagoMixtoEf || "0", 10) || 0;
+  const pagoYaTr = parseInt(pagoMixtoTr || "0", 10) || 0;
+  const pagoYaTa = parseInt(pagoMixtoTa || "0", 10) || 0;
+  const totalIngresadoYaPago = pagoYaEf + pagoYaTr + pagoYaTa;
+  const diffYaPago = totalIngresadoYaPago - total;
+  const pagoYaCuadra = !yaPago || esExterno || (totalIngresadoYaPago > 0 && totalIngresadoYaPago >= total);
 
   // Sincronizar largo de selección con cantidad de tragos gratis derivada de jarros
   useEffect(() => {
@@ -422,10 +553,6 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
     setJarraDoradaTragoId("");
     setYaPago(false);
     setMetodoPagoEsperado(null);
-    setMetodoPagoCrear("efectivo");
-    setMontoRecibidoCrear("");
-    setReferenciaPagoCrear("");
-    referenciaPagoTouched.current = false;
     pagoMixtoTrRefTouched.current = false;
     setPagoMixtoEf(""); setPagoMixtoTr(""); setPagoMixtoTa(""); setPagoMixtoTrRef("");
   };
@@ -482,39 +609,23 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
       return;
     }
     if (!esExterno && yaPago) {
-      if (metodoPagoCrear === "efectivo") {
-        const rec = parseInt(montoRecibidoCrear || "0", 10) || 0;
-        if (rec <= 0) { toast.error("Ingresá el monto recibido"); return; }
-        if (rec < total) { toast.error("El monto recibido no puede ser menor al total"); return; }
-      } else if (metodoPagoCrear === "mixto") {
-        const ef = parseInt(pagoMixtoEf || "0", 10) || 0;
-        const tr = parseInt(pagoMixtoTr || "0", 10) || 0;
-        const ta = parseInt(pagoMixtoTa || "0", 10) || 0;
-        if (ef + tr + ta <= 0) { toast.error("Ingresá al menos un monto de pago"); return; }
-        if (ef + tr + ta !== total) { toast.error("Los montos del pago mixto deben sumar el total del pedido"); return; }
-      }
+      if (totalIngresadoYaPago <= 0) { toast.error("Ingresá al menos un monto de pago"); return; }
+      if (totalIngresadoYaPago < total) { toast.error(`Falta ${fmtCLP(total - totalIngresadoYaPago)}`); return; }
     }
     setSaving(true);
     try {
       const horaAgendadaIso = horaAgendada ? new Date(horaAgendada).toISOString() : null;
 
-      let metodoPagoFinal: typeof metodoPagoCrear | null = null;
-      let montoRecibidoFinal: number | null = null;
+      let metodoPagoFinal: "efectivo" | "transferencia" | "tarjeta" | "mixto" | null = null;
       let referenciaPagoFinal: string | null = null;
 
       if (!esExterno && yaPago) {
-        metodoPagoFinal = metodoPagoCrear;
-        if (metodoPagoCrear === "efectivo") {
-          montoRecibidoFinal = parseInt(montoRecibidoCrear || "0", 10) || 0;
-        } else if (metodoPagoCrear === "transferencia") {
-          montoRecibidoFinal = total;
-          referenciaPagoFinal = referenciaPagoCrear.trim() || null;
-        } else if (metodoPagoCrear === "tarjeta") {
-          montoRecibidoFinal = total;
-        } else {
-          montoRecibidoFinal = total;
-          referenciaPagoFinal = pagoMixtoTrRef.trim() || null;
-        }
+        metodoPagoFinal =
+          pagoYaEf > 0 && pagoYaTr === 0 && pagoYaTa === 0 ? "efectivo"
+          : pagoYaTr > 0 && pagoYaEf === 0 && pagoYaTa === 0 ? "transferencia"
+          : pagoYaTa > 0 && pagoYaEf === 0 && pagoYaTr === 0 ? "tarjeta"
+          : "mixto";
+        referenciaPagoFinal = pagoYaTr > 0 ? (pagoMixtoTrRef.trim() || null) : null;
       } else if (!esExterno && metodoPagoEsperado) {
         metodoPagoFinal = metodoPagoEsperado;
       }
@@ -536,7 +647,6 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
         costo_despacho: costoDespacho,
         total,
         metodo_pago: metodoPagoFinal,
-        monto_recibido: montoRecibidoFinal,
         referencia_pago: referenciaPagoFinal,
         pago_registrado: !esExterno && yaPago,
         hora_agendada: horaAgendadaIso,
@@ -550,24 +660,25 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
         ].filter(Boolean).join("\n") || null,
         es_jarra_dorada: !esExterno && !!jarraDoradaTragoId,
         jarros_prometidos: !esExterno ? jarrosNum : 0,
-        promo_tipo: (!esExterno && jarraDoradaTragoId
-          ? "jarra_dorada" : !esExterno && esCumple
-          ? "cumpleanos" : !esExterno && canjeAprobado
-          ? "canje" : null) as "jarra_dorada" | "cumpleanos" | "canje" | null,
+        jarros_entregados: !esExterno ? jarrosNum : 0,
+        promo_tipo: (!esExterno && tipoCliente === "trabajador"
+          ? "trabajador"
+          : !esExterno && jarraDoradaTragoId
+          ? "jarra_dorada"
+          : !esExterno && esCumple
+          ? "cumpleanos"
+          : !esExterno && canjeAprobado
+          ? "canje"
+          : null) as "trabajador" | "jarra_dorada" | "cumpleanos" | "canje" | null,
         estado: "en_preparacion",
       };
       const { data: pedido, error } = await supabase.from("pedidos").insert(payload).select().single();
       if (error) throw error;
 
       if (!esExterno) {
-        const trMixto = parseInt(pagoMixtoTr || "0", 10) || 0;
-        const refVacia = !referenciaPagoCrear.trim() && !pagoMixtoTrRef.trim();
         const necesitaRefAuto =
-          refVacia && (
-            (metodoPagoFinal === "transferencia" && !referenciaPagoTouched.current) ||
-            (metodoPagoFinal === "mixto" && trMixto > 0 && !pagoMixtoTrRefTouched.current) ||
-            (!yaPago && metodoPagoEsperado === "transferencia")
-          );
+          (yaPago && pagoYaTr > 0 && !pagoMixtoTrRef.trim()) ||
+          (!yaPago && metodoPagoEsperado === "transferencia" && !referenciaPagoFinal);
         if (necesitaRefAuto) {
           const autoRef = referenciaPagoTransferencia(pedido.numero_pedido);
           if (autoRef) {
@@ -592,6 +703,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
         const partesPromo: string[] = [];
         if (l.promoTipo) partesPromo.push(`[PROMO ${l.promoTipo.toUpperCase()}]`);
         if (l.esPrecioEspecial && l.precioOriginal != null) partesPromo.push(`[PROMO_PRECIO:${l.precioOriginal}]`);
+        if (l.producto.esPrecioTrabajador) partesPromo.push("[PRECIO TRABAJADOR]");
         const notasPromoPagado = partesPromo.length > 0 ? partesPromo.join(" | ") : null;
         const free = l.esRegalo ? 0 : (tragosGratisInfo.freeByUid.get(l.uid) ?? 0);
         const paidQty = l.cantidad - free;
@@ -606,14 +718,16 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
           });
         }
         if (free > 0) {
+          // Unidad “gratis” por jarros: precio = solo extras (el base va en pedidos.descuento)
+          const extrasPrecio = l.extras?.reduce((a, e) => a + e.precio, 0) ?? 0;
           items.push({
             pedido_id: pedido.id,
             producto_id: l.producto.id,
             cantidad: free,
-            precio_unitario: 0,
-            subtotal: 0,
-            descuento_item: 0,
-            notas: notasCliente,
+            precio_unitario: extrasPrecio,
+            subtotal: extrasPrecio * free,
+            descuento_item: l.producto.precio * free,
+            notas: [notasCliente, "[PROMO JARROS]"].filter(Boolean).join(" | ") || "[PROMO JARROS]",
           });
         }
       }
@@ -628,31 +742,52 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
           monto: number;
           referencia: string | null;
         }> = [];
-
-        if (metodoPagoFinal === "mixto") {
-          const ef = parseInt(pagoMixtoEf || "0", 10) || 0;
-          const tr = parseInt(pagoMixtoTr || "0", 10) || 0;
-          const ta = parseInt(pagoMixtoTa || "0", 10) || 0;
-          if (ef > 0) pagosInsert.push({ turno_id: turno.id, pedido_id: pedido.id, metodo: "efectivo", monto: ef, referencia: null });
-          if (tr > 0) pagosInsert.push({ turno_id: turno.id, pedido_id: pedido.id, metodo: "transferencia", monto: tr, referencia: referenciaPagoFinal });
-          if (ta > 0) pagosInsert.push({ turno_id: turno.id, pedido_id: pedido.id, metodo: "tarjeta", monto: ta, referencia: null });
-        } else {
+        if (pagoYaEf > 0) {
+          pagosInsert.push({ turno_id: turno.id, pedido_id: pedido.id, metodo: "efectivo", monto: pagoYaEf, referencia: null });
+        }
+        if (pagoYaTr > 0) {
           pagosInsert.push({
             turno_id: turno.id,
             pedido_id: pedido.id,
-            metodo: metodoPagoFinal,
-            monto: total,
-            referencia: metodoPagoFinal === "transferencia" ? referenciaPagoFinal : null,
+            metodo: "transferencia",
+            monto: pagoYaTr,
+            referencia: referenciaPagoFinal,
+          });
+        }
+        if (pagoYaTa > 0) {
+          pagosInsert.push({
+            turno_id: turno.id,
+            pedido_id: pedido.id,
+            metodo: "tarjeta",
+            monto: pagoYaTa,
+            referencia: null,
           });
         }
 
-        const { error: pagErr } = await supabase.from("pagos_turno").insert(pagosInsert);
-        if (pagErr) throw pagErr;
+        if (pagosInsert.length > 0) {
+          await supabase.from("pagos_turno").delete().eq("pedido_id", pedido.id);
+          const { error: pagErr } = await supabase.from("pagos_turno").insert(pagosInsert);
+          if (pagErr) throw pagErr;
+        }
+
+        // Asegurar sincronización pedidos ↔ pagos_turno
+        const { error: syncErr } = await supabase
+          .from("pedidos")
+          .update({
+            metodo_pago: metodoPagoFinal,
+            referencia_pago: referenciaPagoFinal,
+            pago_registrado: true,
+          })
+          .eq("id", pedido.id);
+        if (syncErr) throw syncErr;
       }
 
       toast.success(`Pedido #${pedido.numero_pedido} creado${yaPago ? " · Pago registrado" : ""}`);
+      setProximoPedido((pedido.numero_pedido ?? proximoPedido) + 1);
+      void refrescarProximoPedido();
 
-      const promoLabel = !esExterno && jarraDoradaTragoId ? "Promo: Jarra dorada ⭐"
+      const promoLabel = !esExterno && tipoCliente === "trabajador" ? "PRECIO TRABAJADOR"
+        : !esExterno && jarraDoradaTragoId ? "Promo: Jarra dorada ⭐"
         : !esExterno && esCumple ? "Promo: Cumpleaños 🎂"
         : !esExterno && canjeAprobado ? "Promo: Canje 🎁"
         : !esExterno && tragosGratisAplicados > 0 ? `Promo: ${tragosGratisAplicados} trago(s) gratis x jarros 🏺`
@@ -686,19 +821,20 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
           });
         }
         if (free > 0) {
+          const extrasPrecio = l.extras?.reduce((a, e) => a + e.precio, 0) ?? 0;
           arr.push({
             cantidad: free,
             nombre: l.producto.nombre,
-            precio_unitario: 0,
+            precio_unitario: extrasPrecio,
             extras: l.extras?.map((e) => ({ nombre: formatSaborExtra(e.nombre), precio: e.precio })),
             notas: notasCliente,
-            esRegalo: true,
+            esRegalo: extrasPrecio === 0,
             esPromoJarros: true,
           });
         }
         return arr;
       });
-      const tipoComanda: "despacho" | "retiro" = (tipo === "delivery" || tipo === "despacho") ? "despacho" : "retiro";
+      const tipoComanda = normalizarTipoComanda(tipo);
       const datosImpresion = {
         toma: {
           numero: pedido.numero_pedido,
@@ -715,18 +851,22 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
           notas: [notas.trim() || null, horaAgendadaIso ? `Agendado para ${new Date(horaAgendada).toLocaleString("es-CL")}` : null].filter(Boolean).join(" · ") || null,
           metodoPago: metodoPagoFinal,
           pagoRegistrado: !esExterno && yaPago,
-          montoRecibido: montoRecibidoFinal,
         },
         cocina: {
           numero: pedido.numero_pedido,
           sucursalNombre: sucursalNombre ?? "",
-          tipo,
+          tipo: normalizarTipoComanda(tipo),
           cliente: clienteNombre.trim(),
           telefono: esExterno ? null : clienteTelefono.trim() || null,
           direccion: tipo === "delivery" ? direccion.trim() || null : null,
           referencia: tipo === "delivery" ? referencia.trim() || null : null,
           items: buildComandaCocinaItems(comandaItems),
           notas: notas.trim() || null,
+          total,
+          subtotal,
+          descuentoJarros: descuentoJarrosSobrantes + descuentoJarrosTragos,
+          metodoPago: metodoPagoFinal,
+          pagoRegistrado: !esExterno && yaPago,
         },
       };
 
@@ -750,6 +890,12 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
     <div className="grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-4">
       {/* ───────── COLUMNA IZQUIERDA (60%) ───────── */}
       <div className="space-y-3">
+        <div className="rounded-xl border border-primary/40 bg-primary/10 px-4 py-3 text-center">
+          <div className="font-display text-3xl sm:text-4xl font-extrabold text-primary tracking-wide">
+            PEDIDO <span className="text-4xl sm:text-5xl">#{proximoPedido}</span>
+          </div>
+        </div>
+
         {/* FILA 1 — Datos del cliente + tipo pills */}
         <div className="bg-card border border-border rounded-xl p-3 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr] gap-2">
@@ -865,11 +1011,12 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
             const inic = p.nombre.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() ?? "").join("");
             const sinAlc = p.tiene_alcohol === false;
             const isPromoSabor = p.id === promoSaborId;
-            const isPrecioEspecial = !!p.esPrecioEspecial && !isPromoSabor;
+            const isTrabajador = !!p.esPrecioTrabajador;
+            const isPrecioEspecial = !!p.esPrecioEspecial && !isPromoSabor && !isTrabajador;
             return (
               <button key={p.id} type="button" onClick={() => abrirProducto(p)}
                 className={`group relative overflow-hidden rounded-xl border bg-card text-left transition hover:border-primary hover:shadow-lg hover:-translate-y-0.5 ${
-                  isPromoSabor || isPrecioEspecial ? "border-primary/70 ring-2 ring-primary/30" : "border-border"
+                  isPromoSabor || isPrecioEspecial || isTrabajador ? "border-primary/70 ring-2 ring-primary/30" : "border-border"
                 }`}>
                 <div className="relative aspect-square overflow-hidden bg-background">
                   {img ? (
@@ -884,14 +1031,20 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                     {sinAlc && <Badge className="bg-blue-500 text-white border-transparent text-[10px] px-1.5 py-0.5 font-bold">SIN ALCOHOL</Badge>}
                     {isPromoSabor && <Badge className="bg-primary text-primary-foreground border-transparent text-[10px] px-1.5 py-0.5">⭐ PROMO</Badge>}
                     {isPrecioEspecial && <Badge className="bg-success text-white border-transparent text-[10px] px-1.5 py-0.5 font-bold">PROMO</Badge>}
+                    {isTrabajador && <Badge className="bg-success text-white border-transparent text-[10px] px-1.5 py-0.5 font-bold">👷 TRABAJADOR</Badge>}
                   </div>
                 </div>
                 <div className="p-2.5">
                   <div className="font-semibold text-sm text-foreground truncate">{p.nombre}</div>
-                  {isPrecioEspecial && p.precioOriginal != null && (
-                    <div className="text-xs text-muted-foreground line-through font-mono">{fmtCLP(p.precioOriginal)}</div>
+                  {(isPrecioEspecial || isTrabajador) && p.precioOriginal != null ? (
+                    <div className="text-xs font-mono mt-0.5">
+                      <span className="text-muted-foreground line-through">{fmtCLP(p.precioOriginal)}</span>
+                      <span className="text-muted-foreground"> → </span>
+                      <span className="text-success font-bold">{fmtCLP(p.precio)}{isTrabajador ? " 👷" : ""}</span>
+                    </div>
+                  ) : (
+                    <div className="font-mono font-bold mt-0.5 text-primary">{fmtCLP(p.precio)}</div>
                   )}
-                  <div className={`font-mono font-bold mt-0.5 ${isPrecioEspecial ? "text-success" : "text-primary"}`}>{fmtCLP(p.precio)}</div>
                 </div>
               </button>
             );
@@ -957,8 +1110,21 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                       <div className="text-[10px] text-muted-foreground truncate">{l.notas}</div>
                     )}
                   </div>
-                  <span className="font-mono text-sm font-semibold shrink-0">
-                    {l.esRegalo ? "GRATIS" : fmtCLP(precioLinea(l) * l.cantidad)}
+                  <span className="font-mono text-sm font-semibold shrink-0 text-right">
+                    {l.esRegalo ? (
+                      "GRATIS"
+                    ) : l.producto.esPrecioTrabajador && l.precioOriginal != null ? (
+                      <span className="block leading-tight">
+                        <span className="text-[10px] text-muted-foreground line-through">
+                          {fmtCLP((l.precioOriginal + (l.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)) * l.cantidad)}
+                        </span>
+                        <span className="block text-success">
+                          {fmtCLP(precioLinea(l) * l.cantidad)} 👷
+                        </span>
+                      </span>
+                    ) : (
+                      fmtCLP(precioLinea(l) * l.cantidad)
+                    )}
                   </span>
                   {!l.esRegalo && (
                     <>
@@ -1196,131 +1362,80 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
               <label className="flex items-center gap-2 cursor-pointer">
                 <Checkbox
                   checked={yaPago}
-                  onCheckedChange={(v) => {
-                    const on = v === true;
-                    setYaPago(on);
-                    if (on && metodoPagoCrear === "efectivo" && !montoRecibidoCrear) {
-                      setMontoRecibidoCrear(String(total));
-                    }
-                  }}
+                  onCheckedChange={(v) => setYaPago(v === true)}
                 />
                 <span className="text-sm font-medium">El cliente ya pagó este pedido</span>
               </label>
 
               {yaPago && (
-                <div className="space-y-3 pl-6 border-l-2 border-primary/30">
+                <div className="space-y-2 pl-6 border-l-2 border-primary/30">
                   <div className="space-y-1">
-                    <Label className="label-upper text-xs">Método de pago</Label>
-                    <Select
-                      value={metodoPagoCrear}
-                      onValueChange={(v) => {
-                        setMetodoPagoCrear(v as typeof metodoPagoCrear);
-                        if (v !== "transferencia") referenciaPagoTouched.current = false;
-                      }}
-                    >
-                      <SelectTrigger className="bg-background h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="efectivo">Efectivo</SelectItem>
-                        <SelectItem value="transferencia">Transferencia</SelectItem>
-                        <SelectItem value="tarjeta">Tarjeta</SelectItem>
-                        <SelectItem value="mixto">Mixto</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label className="text-xs flex items-center gap-1"><Banknote className="h-3 w-3" /> Efectivo</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={pagoMixtoEf}
+                      onChange={(e) => setPagoMixtoEf(e.target.value)}
+                      placeholder="0"
+                      className="bg-background font-mono h-9"
+                    />
                   </div>
-
-                  {metodoPagoCrear === "efectivo" && (
-                    <div className="space-y-2">
-                      <div className="space-y-1">
-                        <Label className="label-upper text-xs">Monto recibido</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          inputMode="numeric"
-                          value={montoRecibidoCrear}
-                          onChange={(e) => setMontoRecibidoCrear(e.target.value)}
-                          placeholder={String(total)}
-                          className="bg-background font-mono h-9"
-                        />
-                      </div>
-                      {(() => {
-                        const rec = parseInt(montoRecibidoCrear || "0", 10) || 0;
-                        if (rec <= 0) return null;
-                        const vuelto = rec - total;
-                        return (
-                          <div className={`text-xs font-mono ${vuelto >= 0 ? "text-success" : "text-destructive"}`}>
-                            {vuelto >= 0 ? `Vuelto: ${fmtCLP(vuelto)}` : `Faltan: ${fmtCLP(Math.abs(vuelto))}`}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-
-                  {metodoPagoCrear === "transferencia" && (
-                    <div className="space-y-1">
-                      <Label className="label-upper text-xs">Referencia de pago (opcional)</Label>
+                  <div className="space-y-1">
+                    <Label className="text-xs flex items-center gap-1"><Landmark className="h-3 w-3" /> Transferencia</Label>
+                    <div className="flex gap-2">
                       <Input
-                        value={referenciaPagoCrear}
+                        type="number"
+                        min="0"
+                        inputMode="numeric"
+                        value={pagoMixtoTr}
+                        onChange={(e) => setPagoMixtoTr(e.target.value)}
+                        placeholder="0"
+                        className="bg-background font-mono h-9 flex-1"
+                      />
+                      <Input
+                        value={pagoMixtoTrRef}
                         onChange={(e) => {
-                          referenciaPagoTouched.current = true;
-                          setReferenciaPagoCrear(e.target.value);
+                          pagoMixtoTrRefTouched.current = true;
+                          setPagoMixtoTrRef(e.target.value);
                         }}
-                        placeholder="N° transferencia"
-                        className="bg-background h-9"
+                        placeholder="Referencia"
+                        className="bg-background h-9 w-[40%]"
                         maxLength={50}
+                        disabled={pagoYaTr <= 0}
                       />
                     </div>
-                  )}
-
-                  {metodoPagoCrear === "mixto" && (
-                    <div className="space-y-2">
-                      <div className="space-y-1">
-                        <Label className="text-xs flex items-center gap-1"><Banknote className="h-3 w-3" /> Efectivo</Label>
-                        <Input type="number" min="0" value={pagoMixtoEf} onChange={(e) => setPagoMixtoEf(e.target.value)} placeholder="0" className="bg-background font-mono h-9" />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs flex items-center gap-1"><Landmark className="h-3 w-3" /> Transferencia</Label>
-                        <Input type="number" min="0" value={pagoMixtoTr} onChange={(e) => setPagoMixtoTr(e.target.value)} placeholder="0" className="bg-background font-mono h-9" />
-                        {(parseInt(pagoMixtoTr || "0", 10) || 0) > 0 && (
-                          <Input
-                            value={pagoMixtoTrRef}
-                            onChange={(e) => {
-                              pagoMixtoTrRefTouched.current = true;
-                              setPagoMixtoTrRef(e.target.value);
-                            }}
-                            placeholder="N° referencia (opcional)"
-                            className="bg-background h-9"
-                            maxLength={50}
-                          />
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs flex items-center gap-1"><CreditCard className="h-3 w-3" /> Tarjeta</Label>
-                        <Input type="number" min="0" value={pagoMixtoTa} onChange={(e) => setPagoMixtoTa(e.target.value)} placeholder="0" className="bg-background font-mono h-9" />
-                      </div>
-                      {(() => {
-                        const mixtoSum =
-                          (parseInt(pagoMixtoEf || "0", 10) || 0) +
-                          (parseInt(pagoMixtoTr || "0", 10) || 0) +
-                          (parseInt(pagoMixtoTa || "0", 10) || 0);
-                        return (
-                          <div className="text-[11px] text-muted-foreground">
-                            Total pedido: <span className="font-mono text-foreground">{fmtCLP(total)}</span>
-                            {" · "}
-                            Ingresado:{" "}
-                            <span className={`font-mono ${mixtoSum === total ? "text-success" : "text-foreground"}`}>
-                              {mixtoSum === total ? "✓ cuadra" : fmtCLP(mixtoSum)}
-                            </span>
-                          </div>
-                        );
-                      })()}
+                    {pagoYaTr > 0 && !pagoMixtoTrRef.trim() && (
+                      <p className="text-[10px] text-muted-foreground">Si no ingresás referencia, se usará #n° del pedido</p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs flex items-center gap-1"><CreditCard className="h-3 w-3" /> Tarjeta</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={pagoMixtoTa}
+                      onChange={(e) => setPagoMixtoTa(e.target.value)}
+                      placeholder="0"
+                      className="bg-background font-mono h-9"
+                    />
+                  </div>
+                  <div className="pt-2 border-t border-border space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total ingresado</span>
+                      <span className="font-mono">{fmtCLP(totalIngresadoYaPago)}</span>
                     </div>
-                  )}
-
-                  {metodoPagoCrear === "tarjeta" && (
-                    <p className="text-xs text-muted-foreground">
-                      Se registrará el pago por <span className="font-mono text-foreground">{fmtCLP(total)}</span> al crear el pedido.
-                    </p>
-                  )}
+                    {diffYaPago < 0 && (
+                      <div className="flex justify-between text-destructive font-medium">
+                        <span>Falta</span>
+                        <span className="font-mono">{fmtCLP(Math.abs(diffYaPago))}</span>
+                      </div>
+                    )}
+                    {diffYaPago === 0 && totalIngresadoYaPago > 0 && (
+                      <div className="text-success font-medium text-center">✓ Pago completo</div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1376,14 +1491,26 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
               className={`h-12 font-bold uppercase text-xs flex-col gap-0.5 ${horaAgendada ? "border-primary text-primary" : ""}`}>
               <CalendarClock className="h-4 w-4" /> Agendar
             </Button>
-            <Button type="button" variant="secondary" disabled={saving || lineas.length === 0}
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={saving || lineas.length === 0 || (yaPago && !pagoYaCuadra)}
               onClick={submit}
-              className="h-12 font-bold uppercase text-xs flex-col gap-0.5">
+              className="h-12 font-bold uppercase text-xs flex-col gap-0.5"
+            >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4" /> Guardar</>}
             </Button>
-            <Button type="button" disabled={saving || lineas.length === 0}
+            <Button
+              type="button"
+              disabled={saving || lineas.length === 0 || (yaPago && !pagoYaCuadra)}
               onClick={submit}
-              className="h-12 font-bold uppercase text-xs flex-col gap-0.5 bg-primary text-primary-foreground hover:bg-primary/90">
+              className={cn(
+                "h-12 font-bold uppercase text-xs flex-col gap-0.5",
+                yaPago && pagoYaCuadra && diffYaPago === 0
+                  ? "bg-success text-success-foreground hover:bg-success/90"
+                  : "bg-primary text-primary-foreground hover:bg-primary/90",
+              )}
+            >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CreditCard className="h-4 w-4" /> Procesar pago</>}
             </Button>
           </div>

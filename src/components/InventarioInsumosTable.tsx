@@ -64,7 +64,7 @@ export default function InventarioInsumosTable({ inv, updateInv }: Props) {
                         <div className="flex flex-col items-end gap-1">
                           <InputCajasUnidades
                             insumo={r}
-                            valorMl={r.cantidadReal}
+                            valorMl={r.contado ? r.cantidadReal : null}
                             onChange={(v) => updateInv(r.insumo_id, { cantidadReal: v, contado: true })}
                           />
                           {ml && (

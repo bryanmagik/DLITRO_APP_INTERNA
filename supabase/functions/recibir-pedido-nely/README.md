@@ -44,13 +44,15 @@ apikey: TU_SUPABASE_ANON_KEY
 
 Número de jarros retornables que entrega el cliente.
 
-- Cada 4 jarros = 1 trago gratis (el más caro del pedido)
+- Cada 4 jarros = 1 trago gratis (el de mayor **precio base**; no incluye extras)
 - Jarros sobrantes (módulo 4) = $1.000 de descuento c/u
 - Si no se envía, default `0` (sin descuento)
 - Se guarda en `pedidos.jarros_entregados` y el descuento en `pedidos.descuento`
 - `total` = `subtotal` + `costo_despacho` - `descuento` (mínimo 0)
 
-Ejemplo: 4 jarros + 1 Mojito ($11.000) + 1 Colada ($13.000) → 1 trago gratis (Colada) → descuento $13.000.
+Ejemplo: 4 jarros + Mojito Cubano + Pulpa de mango ($12.000) → 1 trago gratis → descuento **$11.000** (solo base); el cliente paga el extra ($1.000).
+
+Ejemplo sin extras: 4 jarros + 1 Mojito ($11.000) + 1 Colada ($13.000) → 1 trago gratis (Colada) → descuento $13.000.
 
 ## Sabores extra (opcional por ítem)
 

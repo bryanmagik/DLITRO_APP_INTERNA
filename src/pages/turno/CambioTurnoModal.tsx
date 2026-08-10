@@ -86,7 +86,7 @@ export default function CambioTurnoModal({
   const totalGastosEfectivo = gastos
     .filter((g) => g.metodo === "efectivo" && !esIngresoCaja(g.concepto))
     .reduce((a, g) => a + g.monto, 0);
-  const totalPagoDesp = pagosDesp.reduce((a, p) => a + p.total_a_pagar, 0);
+  const totalPagoDesp = pagosDesp.reduce((a, p) => a + (p.total_a_pagar > 0 ? p.total_a_pagar : 0), 0);
   const efectivoEsperado = turno.caja_chica_apertura + totalEfectivoVentas - totalGastosEfectivo - totalPagoDesp;
   const declarado = parseInt(efectivoDeclarado || "0", 10) || 0;
   const diferencia = declarado - efectivoEsperado;

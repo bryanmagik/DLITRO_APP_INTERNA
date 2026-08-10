@@ -1,0 +1,11 @@
+{
+  "version": "0.2.4",
+  "notes": "Nueva versión disponible",
+  "pub_date": "2026-07-31T17:23:42.165Z",
+  "platforms": {
+    "windows-x86_64": {
+      "url": "https://github.com/bryanmagik/DLITRO_APP_INTERNA/releases/download/v0.2.4/dlitro_0.2.4_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTQWk4Mk9UQ21Udnk2dnRUNWU5WFVvSUk5Q3dSSXYwYWxXdUlpenkxcEhLZFFPMVMzVnRONjlLQ3BRbVpzZkRGcTNKVTBHaHMxU1hwenZXWlIxbUVlZ0hkcUY1Z282TWc0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NTE4NjAwCWZpbGU6ZGxpdHJvXzAuMi40X3g2NC1zZXR1cC5leGUKbjhEc0Q4TlBvbzBoaTRsaTJuM3JqRWtqMWZjWkdzZXZURGZSWkc1eFJScnFuYitPK2x1ZENYUStUSUNKS3FCNmVFQW8xeFFBZGdhU3RMT2ZTZ2lOQkE9PQo="
+    }
+  }
+}

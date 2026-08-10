@@ -76,7 +76,10 @@ export default function AgregarCajaChicaModal({
           <div className="space-y-2">
             <Label className="label-upper">Monto a agregar $</Label>
             <Input
-              type="number" min={1} value={monto}
+              type="number"
+              min={1}
+              step={1}
+              value={monto}
               onChange={(e) => setMonto(e.target.value)}
               className="bg-background font-mono text-lg"
               autoFocus

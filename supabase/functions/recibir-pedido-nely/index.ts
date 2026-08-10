@@ -8,7 +8,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
  * - sucursal_id, cliente_nombre, cliente_telefono, tipo, items, metodo_pago, ...
  * - jarros_entregados: INT (opcional, default 0)
  *     Número de jarros retornables que entrega el cliente.
- *     - Cada 4 jarros = 1 trago gratis (el más caro)
+ *     - Cada 4 jarros = 1 trago gratis (solo precio base del producto, sin extras)
  *     - Jarros sobrantes (módulo 4) = $1.000 descuento c/u
  */
 
@@ -17,25 +17,29 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-nely-api-key',
 }
 
-/** Descuento por jarros — idéntico a la app de escritorio. */
+/** Descuento por jarros — idéntico a la app de escritorio (solo precio base). */
 function calcularDescuentoJarros(
   jarros: number,
-  items: Array<{ precio_unitario: number; cantidad: number }>,
+  items: Array<{ precio_unitario: number; precio_base: number; cantidad: number }>,
 ): number {
   if (jarros <= 0) return 0
 
-  const itemsPagos = items.filter((it) => it.precio_unitario > 0)
-  const totalProductos = items.reduce((acc, it) => acc + Number(it.cantidad || 0), 0)
+  const itemsPagos = items.filter((it) => {
+    const base = Number(it.precio_base) > 0 ? Number(it.precio_base) : Number(it.precio_unitario)
+    return base > 0 && Number(it.precio_unitario) > 0
+  })
+  const totalProductos = itemsPagos.reduce((acc, it) => acc + Number(it.cantidad || 0), 0)
   const tragosGratis = Math.min(Math.floor(jarros / 4), totalProductos)
   const sobrantes = jarros % 4
 
-  const precios: number[] = []
+  const preciosBase: number[] = []
   for (const it of itemsPagos) {
-    for (let i = 0; i < it.cantidad; i++) precios.push(it.precio_unitario)
+    const base = Number(it.precio_base) > 0 ? Number(it.precio_base) : Number(it.precio_unitario)
+    for (let i = 0; i < it.cantidad; i++) preciosBase.push(base)
   }
-  precios.sort((a, b) => b - a)
+  preciosBase.sort((a, b) => b - a)
 
-  const descuentoTragos = precios.slice(0, tragosGratis).reduce((a, p) => a + p, 0)
+  const descuentoTragos = preciosBase.slice(0, tragosGratis).reduce((a, p) => a + p, 0)
   const descuentoSobrantes = sobrantes * 1000
   return descuentoTragos + descuentoSobrantes
 }
@@ -208,6 +212,8 @@ serve(async (req) => {
       producto_id: string
       cantidad: number
       precio_unitario: number
+      /** Precio catálogo sin extras — usado solo para descuento jarros. */
+      precio_base: number
       subtotal: number
       notas: string | null
     }> = []
@@ -276,6 +282,7 @@ serve(async (req) => {
         producto_id: producto.id,
         cantidad: item.cantidad,
         precio_unitario: precioUnitario,
+        precio_base: Number(producto.precio),
         subtotal: itemSubtotal,
         notas: notasItem,
       })
@@ -321,8 +328,11 @@ serve(async (req) => {
       )
     }
 
-    // Insertar items del pedido
-    const itemsConPedidoId = pedidoItems.map(item => ({ ...item, pedido_id: pedido.id }))
+    // Insertar items del pedido (precio_base solo se usa para el cálculo de descuento)
+    const itemsConPedidoId = pedidoItems.map(({ precio_base: _pb, ...item }) => ({
+      ...item,
+      pedido_id: pedido.id,
+    }))
 
     const { error: itemsError } = await supabase
       .from('pedido_items')

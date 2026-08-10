@@ -21,7 +21,7 @@ export interface Turno {
   created_at: string | null;
 }
 
-type TurnoCtx = { turno: Turno };
+type TurnoCtx = { turno: Turno; refreshTurno: () => Promise<void> };
 export const useTurno = () => useOutletContext<TurnoCtx>();
 
 export default function TurnoPage() {
@@ -80,7 +80,7 @@ export default function TurnoPage() {
   if (!unido) return <UnirseTurnoActivo turno={turno} onUnirse={() => setUnido(true)} />;
   return (
     <div className="space-y-4">
-      <Outlet context={{ turno } satisfies TurnoCtx} />
+      <Outlet context={{ turno, refreshTurno: cargar } satisfies TurnoCtx} />
       <CierreTurnoModal turno={turno} open={cerrarOpen} onOpenChange={setCerrarOpen} onCerrado={() => { setUnido(false); cargar(); }} />
       <AgregarCajaChicaModal turno={turno} open={cajaOpen} onOpenChange={setCajaOpen} onAgregado={cargar} />
       <CambioTurnoModal turno={turno} open={cambioOpen} onOpenChange={setCambioOpen} onCambio={cargar} />

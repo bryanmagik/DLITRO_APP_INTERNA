@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Plus, Sparkles, Tag, Trash2, Trophy } from "lucide-react";
+import { Briefcase, Loader2, Plus, Sparkles, Tag, Trash2, Trophy } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -25,6 +25,12 @@ interface PromocionPrecio {
   activo: boolean | null;
   producto?: { id: string; nombre: string; precio: number } | null;
 }
+interface PrecioTrabajadorDraft {
+  producto_id: string;
+  precio_trabajador: number;
+  activo: boolean;
+  rowId?: string;
+}
 
 const DIAS_SEMANA = [
   { key: "lunes", label: "L" },
@@ -38,6 +44,9 @@ const DIAS_SEMANA = [
 
 const fmtCLP = (n: number) =>
   new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(n);
+
+const defaultPrecioTrabajador = (nombre: string) =>
+  nombre.toLowerCase().includes("corona") ? 8000 : 7000;
 
 export default function PromocionesPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -58,16 +67,20 @@ export default function PromocionesPage() {
   const [savingPrecio, setSavingPrecio] = useState(false);
   const [togglingPrecioId, setTogglingPrecioId] = useState<string | null>(null);
   const [deletingPrecioId, setDeletingPrecioId] = useState<string | null>(null);
+  const [preciosTrabajador, setPreciosTrabajador] = useState<PrecioTrabajadorDraft[]>([]);
+  const [savingTrabajador, setSavingTrabajador] = useState(false);
 
   const load = async () => {
-    const [pRes, cRes, promoRes, jarraRes, preciosRes] = await Promise.all([
+    const [pRes, cRes, promoRes, jarraRes, preciosRes, ptRes] = await Promise.all([
       supabase.from("productos").select("id,nombre,precio,categoria_id").eq("activo", true).order("nombre"),
       supabase.from("categorias").select("*").order("orden"),
       supabase.from("promociones").select("id,producto_id,activo,precio_especial,dias_activos").eq("tipo", "sabor_del_dia").maybeSingle(),
       supabase.from("promociones").select("id,producto_id,activo,precio_especial,dias_activos").eq("tipo", "jarra_dorada").maybeSingle(),
       supabase.from("promociones_precio").select("id,producto_id,precio_promo,nombre,activo,producto:producto_id(id,nombre,precio)").order("created_at", { ascending: false }),
+      supabase.from("precios_trabajador").select("id,producto_id,precio_trabajador,activo"),
     ]);
-    setProductos((pRes.data as Producto[]) ?? []);
+    const prods = (pRes.data as Producto[]) ?? [];
+    setProductos(prods);
     setCategorias((cRes.data as Categoria[]) ?? []);
     const pr = (promoRes.data as PromoRow | null) ?? null;
     setPromo(pr);
@@ -76,6 +89,25 @@ export default function PromocionesPage() {
     setJarraPromo(jp);
     if (jp?.dias_activos && jp.dias_activos.length > 0) setJarraDias(jp.dias_activos);
     setPromosPrecio((preciosRes.data as PromocionPrecio[]) ?? []);
+
+    const ptRows = (ptRes.data as Array<{
+      id: string;
+      producto_id: string;
+      precio_trabajador: number;
+      activo: boolean | null;
+    }> | null) ?? [];
+    const byProd = new Map(ptRows.map((r) => [r.producto_id, r]));
+    setPreciosTrabajador(
+      prods.map((p) => {
+        const row = byProd.get(p.id);
+        return {
+          producto_id: p.id,
+          precio_trabajador: row?.precio_trabajador ?? defaultPrecioTrabajador(p.nombre),
+          activo: row ? !!row.activo : true,
+          rowId: row?.id,
+        };
+      }),
+    );
     setLoading(false);
   };
 
@@ -314,6 +346,44 @@ export default function PromocionesPage() {
       toast({ title: "Error", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setDeletingPrecioId(null);
+    }
+  };
+
+  const updatePrecioTrabajador = (productoId: string, patch: Partial<PrecioTrabajadorDraft>) => {
+    setPreciosTrabajador((prev) =>
+      prev.map((r) => (r.producto_id === productoId ? { ...r, ...patch } : r)),
+    );
+  };
+
+  const guardarPreciosTrabajador = async () => {
+    if (savingTrabajador) return;
+    for (const row of preciosTrabajador) {
+      if (!Number.isFinite(row.precio_trabajador) || row.precio_trabajador <= 0) {
+        toast({
+          title: "Precio inválido",
+          description: "Todos los precios trabajador deben ser mayores a 0.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    setSavingTrabajador(true);
+    try {
+      const payload = preciosTrabajador.map((r) => ({
+        producto_id: r.producto_id,
+        precio_trabajador: Math.round(r.precio_trabajador),
+        activo: r.activo,
+      }));
+      const { error } = await supabase
+        .from("precios_trabajador")
+        .upsert(payload, { onConflict: "producto_id" });
+      if (error) throw error;
+      toast({ title: "Precios trabajador guardados" });
+      await load();
+    } catch (e: unknown) {
+      toast({ title: "Error al guardar", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    } finally {
+      setSavingTrabajador(false);
     }
   };
 
@@ -577,6 +647,73 @@ export default function PromocionesPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* ───── PRECIOS TRABAJADOR ───── */}
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Briefcase className="h-5 w-5 text-success" /> 💼 Precios Trabajador
+                </CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Precios especiales aplicados en la toma de pedidos al seleccionar modo Trabajador.
+                </p>
+              </div>
+              <Button onClick={guardarPreciosTrabajador} disabled={savingTrabajador} className="shrink-0">
+                {savingTrabajador ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Guardar
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-lg border border-border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Producto</TableHead>
+                      <TableHead className="text-right">Precio normal</TableHead>
+                      <TableHead className="text-right">Precio trabajador</TableHead>
+                      <TableHead className="text-center">Activo</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {preciosTrabajador.map((row) => {
+                      const prod = productos.find((p) => p.id === row.producto_id);
+                      if (!prod) return null;
+                      return (
+                        <TableRow key={row.producto_id}>
+                          <TableCell className="font-medium">{prod.nombre}</TableCell>
+                          <TableCell className="text-right font-mono text-muted-foreground">
+                            {fmtCLP(prod.precio)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              type="number"
+                              min={1}
+                              value={row.precio_trabajador}
+                              onChange={(e) =>
+                                updatePrecioTrabajador(row.producto_id, {
+                                  precio_trabajador: parseInt(e.target.value, 10) || 0,
+                                })
+                              }
+                              className="ml-auto w-28 font-mono text-right h-9"
+                            />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Switch
+                              checked={row.activo}
+                              onCheckedChange={(v) =>
+                                updatePrecioTrabajador(row.producto_id, { activo: v })
+                              }
+                            />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* ───── JARRA DORADA ───── */}
           <Card className="max-w-2xl">

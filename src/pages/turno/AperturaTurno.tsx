@@ -43,8 +43,8 @@ export default function AperturaTurno({ sucursalId, onAbierto }: { sucursalId: s
 
   const abrir = async (e: React.FormEvent) => {
     e.preventDefault();
-    const monto = parseInt(cajaChica || "0", 10);
-    if (Number.isNaN(monto) || monto < 0) {
+    const monto = Math.floor(Number(cajaChica));
+    if (!Number.isFinite(monto) || monto < 0) {
       toast.error("Ingresá un monto válido");
       return;
     }
@@ -108,7 +108,7 @@ export default function AperturaTurno({ sucursalId, onAbierto }: { sucursalId: s
           <Input
             type="number"
             min={0}
-            step={1000}
+            step={1}
             value={cajaChica}
             onChange={(e) => setCajaChica(e.target.value)}
             placeholder="0"

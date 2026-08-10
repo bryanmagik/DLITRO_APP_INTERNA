@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Bike, Loader2, MapPin, X } from "lucide-react";
+import { AlertTriangle, Loader2, MapPin, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthStore } from "@/stores/authStore";
@@ -613,24 +613,111 @@ export default function MapaDespachos() {
 
   // ── Derivados ─────────────────────────────────────────────────────────────
 
-  const pedidosFiltrados = useMemo(
-    () => filtroDespachador ? pedidos.filter((p) => p.despachador_id === filtroDespachador) : pedidos,
-    [pedidos, filtroDespachador]
+  const fmtMonto = (n: number) =>
+    `$${n.toLocaleString("es-CL", { maximumFractionDigits: 0 })}`;
+
+  const sinAsignar = useMemo(() => {
+    const list = pedidos.filter((p) => !p.despachador_id && p.estado !== "entregado");
+    return [...list].sort((a, b) => (a.numero_pedido ?? 0) - (b.numero_pedido ?? 0));
+  }, [pedidos]);
+
+  const asignados = useMemo(() => {
+    let list = pedidos.filter((p) => !!p.despachador_id && p.estado !== "entregado");
+    if (filtroDespachador) list = list.filter((p) => p.despachador_id === filtroDespachador);
+    return [...list].sort((a, b) => (a.numero_pedido ?? 0) - (b.numero_pedido ?? 0));
+  }, [pedidos, filtroDespachador]);
+
+  /** Visible en la lista (respeta filtro de despachador). */
+  const pedidosVisibles = useMemo(
+    () => (filtroDespachador ? asignados : [...sinAsignar, ...asignados]),
+    [filtroDespachador, sinAsignar, asignados],
   );
 
   const todosSeleccionados =
-    pedidosFiltrados.length > 0 && pedidosFiltrados.every((p) => selectedIds.has(p.id));
+    pedidosVisibles.length > 0 && pedidosVisibles.every((p) => selectedIds.has(p.id));
 
   const toggleSelectAll = () =>
-    setSelectedIds(todosSeleccionados ? new Set() : new Set(pedidosFiltrados.map((p) => p.id)));
+    setSelectedIds(todosSeleccionados ? new Set() : new Set(pedidosVisibles.map((p) => p.id)));
 
   const despachadorNombre = (id: string | null) => {
     if (!id) return null;
-    const d = despachadores.find((d) => d.id === id);
+    const d = despachadores.find((x) => x.id === id);
     return d ? (d.nombre_completo ?? `${d.nombre} ${d.apellido ?? ""}`.trim()) : null;
   };
 
-  const pedidosPorDespachador = (id: string) => pedidos.filter((p) => p.despachador_id === id).length;
+  const pedidosPorDespachador = (id: string) =>
+    pedidos.filter((p) => p.despachador_id === id && p.estado !== "entregado").length;
+
+  const renderPedidoItem = (p: PedidoDespacho, opts?: { mostrarDespachador?: boolean }) => {
+    const dNombre = despachadorNombre(p.despachador_id);
+    const focused = p.id === focusedId;
+    const selected = selectedIds.has(p.id);
+    const colorEstado = COLORES[p.estado] ?? "#6B7280";
+    const { texto: tiempo, alerta } = tiempoTranscurrido(p.updated_at);
+    const estadoLabel = (ETIQUETAS[p.estado] ?? p.estado).toUpperCase();
+
+    return (
+      <div
+        key={p.id}
+        ref={(el) => {
+          if (el) itemRefs.current.set(p.id, el);
+          else itemRefs.current.delete(p.id);
+        }}
+        className={`flex gap-2 px-3 py-2.5 cursor-pointer transition-colors select-none ${
+          focused ? "bg-primary/10 border-l-2 border-primary" : "hover:bg-secondary/30"
+        }`}
+        onClick={() => focusPedido(p)}
+      >
+        <div className="pt-0.5 shrink-0" onClick={(e) => toggleSelect(p.id, e)}>
+          <Checkbox checked={selected} className="h-3.5 w-3.5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline justify-between gap-1">
+            <div className="flex items-baseline gap-1 flex-wrap min-w-0">
+              <span className="text-xs font-bold shrink-0" style={{ color: colorEstado }}>
+                #{p.numero_pedido ?? "—"}
+              </span>
+              <span className="text-xs text-foreground truncate">{p.cliente_nombre}</span>
+              <span className="text-xs font-mono text-muted-foreground shrink-0">
+                - {fmtMonto(p.total)}
+              </span>
+            </div>
+            {tiempo && (
+              <span
+                className="text-[10px] font-medium shrink-0"
+                style={{ color: alerta ? "#EF4444" : "#9CA3AF" }}
+              >
+                {tiempo}
+              </span>
+            )}
+          </div>
+          {opts?.mostrarDespachador && (
+            <div className="mt-0.5 space-y-0.5">
+              {dNombre && (
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground truncate pl-0.5">
+                  → {dNombre}
+                </p>
+              )}
+              <span
+                className="inline-block text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                style={{ color: colorEstado, backgroundColor: `${colorEstado}22` }}
+              >
+                {estadoLabel}
+              </span>
+            </div>
+          )}
+          {!opts?.mostrarDespachador && p.direccion_entrega && (
+            <div className="flex items-start gap-1 mt-0.5">
+              <MapPin className="h-2.5 w-2.5 mt-0.5 shrink-0 text-muted-foreground" />
+              <span className="text-[10px] text-muted-foreground truncate leading-tight">
+                {p.direccion_entrega}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   // ── Error ──────────────────────────────────────────────────────────────────
 
@@ -706,11 +793,11 @@ export default function MapaDespachos() {
                 Pedidos pendientes
               </h2>
               <Badge variant="outline" className="text-[10px] h-5 px-1.5">
-                {pedidosFiltrados.length}
+                {pedidosVisibles.length}
               </Badge>
             </div>
 
-            {pedidosFiltrados.length > 0 && (
+            {pedidosVisibles.length > 0 && (
               <button
                 onClick={toggleSelectAll}
                 className="text-[10px] text-primary hover:underline flex items-center gap-1.5"
@@ -731,69 +818,47 @@ export default function MapaDespachos() {
           </div>
 
           <ScrollArea className="flex-1">
-            {pedidosFiltrados.length === 0 ? (
+            {pedidosVisibles.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-10">Sin despachos pendientes</p>
             ) : (
-              <div className="divide-y divide-border">
-                {pedidosFiltrados.map((p) => {
-                  const dNombre = despachadorNombre(p.despachador_id);
-                  const focused = p.id === focusedId;
-                  const selected = selectedIds.has(p.id);
-                  const colorEstado = COLORES[p.estado] ?? "#6B7280";
-                  const { texto: tiempo, alerta } = tiempoTranscurrido(p.updated_at);
-
-                  return (
-                    <div
-                      key={p.id}
-                      ref={(el) => {
-                        if (el) itemRefs.current.set(p.id, el);
-                        else itemRefs.current.delete(p.id);
-                      }}
-                      className={`flex gap-2 px-3 py-2.5 cursor-pointer transition-colors select-none ${
-                        focused ? "bg-primary/10 border-l-2 border-primary" : "hover:bg-secondary/30"
-                      }`}
-                      onClick={() => focusPedido(p)}
-                    >
-                      <div className="pt-0.5 shrink-0" onClick={(e) => toggleSelect(p.id, e)}>
-                        <Checkbox checked={selected} className="h-3.5 w-3.5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline justify-between gap-1">
-                          <div className="flex items-baseline gap-1 flex-wrap min-w-0">
-                            <span className="text-xs font-bold shrink-0" style={{ color: colorEstado }}>
-                              #{p.numero_pedido ?? "—"}
-                            </span>
-                            <span className="text-xs text-foreground truncate">{p.cliente_nombre}</span>
-                          </div>
-                          {tiempo && (
-                            <span
-                              className="text-[10px] font-medium shrink-0"
-                              style={{ color: alerta ? "#EF4444" : "#9CA3AF" }}
-                            >
-                              {tiempo}
-                            </span>
-                          )}
-                        </div>
-                        {p.direccion_entrega && (
-                          <div className="flex items-start gap-1 mt-0.5">
-                            <MapPin className="h-2.5 w-2.5 mt-0.5 shrink-0 text-muted-foreground" />
-                            <span className="text-[10px] text-muted-foreground truncate leading-tight">
-                              {p.direccion_entrega}
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <Bike className="h-2.5 w-2.5 shrink-0 text-muted-foreground" />
-                          {dNombre ? (
-                            <span className="text-[10px] text-foreground truncate">{dNombre}</span>
-                          ) : (
-                            <span className="text-[10px] text-destructive font-medium">Sin asignar</span>
-                          )}
-                        </div>
-                      </div>
+              <div className="pb-2">
+                {!filtroDespachador && (
+                  <div>
+                    <div className="sticky top-0 z-[1] flex items-center gap-2 px-3 py-2 bg-card border-y border-border">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-destructive">
+                        Sin asignar
+                      </span>
+                      <Badge className="h-5 min-w-5 justify-center px-1.5 text-[10px] bg-destructive/15 text-destructive border-destructive/40 hover:bg-destructive/15">
+                        {sinAsignar.length}
+                      </Badge>
                     </div>
-                  );
-                })}
+                    {sinAsignar.length === 0 ? (
+                      <p className="text-[10px] text-muted-foreground px-3 py-3">Ninguno</p>
+                    ) : (
+                      <div className="divide-y divide-border">
+                        {sinAsignar.map((p) => renderPedidoItem(p))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <div className="sticky top-0 z-[1] flex items-center gap-2 px-3 py-2 bg-card border-y border-border">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      Asignados
+                    </span>
+                    <Badge className="h-5 min-w-5 justify-center px-1.5 text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/40 hover:bg-emerald-500/15">
+                      {asignados.length}
+                    </Badge>
+                  </div>
+                  {asignados.length === 0 ? (
+                    <p className="text-[10px] text-muted-foreground px-3 py-3">Ninguno</p>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {asignados.map((p) => renderPedidoItem(p, { mostrarDespachador: true }))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </ScrollArea>

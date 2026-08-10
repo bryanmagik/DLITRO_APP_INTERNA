@@ -10,6 +10,7 @@ import SeguimientoPedidoPage from "./pages/SeguimientoPedidoPage";
 import AppLayout from "./components/layout/AppLayout";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { useAuthInit } from "./hooks/useAuthInit";
+import { useVerificarActualizacion } from "./hooks/useVerificarActualizacion";
 import { PagePlaceholder } from "./components/PagePlaceholder";
 import UsuariosPage from "./pages/admin/UsuariosPage";
 import SucursalesPage from "./pages/admin/SucursalesPage";
@@ -18,6 +19,7 @@ import CostosPage from "./pages/admin/CostosPage";
 import RecetasPage from "./pages/admin/RecetasPage";
 import PromocionesPage from "./pages/admin/PromocionesPage";
 import BaseDespachadoresPage from "./pages/admin/BaseDespachadoresPage";
+import PedidosAdminPage from "./pages/admin/PedidosAdminPage";
 import TarifasDespachoPage from "./pages/admin/TarifasDespachoPage";
 import TurnoPage from "./pages/turno/TurnoPage";
 import PedidosPage from "./pages/turno/PedidosPage";
@@ -44,11 +46,15 @@ import JarrosPage from "./pages/bodega/JarrosPage";
 import InsumosPage from "./pages/bodega/InsumosPage";
 import { Navigate } from "react-router-dom";
 import ContadorPage from "./pages/contador/ContadorPage";
+import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
+import AuditoriaDespachosPage from "./pages/admin/AuditoriaDespachosPage";
+import VersionBadge from "./components/VersionBadge";
 
 const queryClient = new QueryClient();
 
 const AuthBoot = ({ children }: { children: React.ReactNode }) => {
   useAuthInit();
+  useVerificarActualizacion();
   return <>{children}</>;
 };
 
@@ -59,6 +65,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthBoot>
+          <VersionBadge />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
@@ -72,9 +79,18 @@ const App = () => (
                 </ProtectedRoute>
               }
             >
-              <Route path="/admin/dashboard" element={<PagePlaceholder title="Dashboard" description="Vista general del negocio" />} />
+              <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+              <Route path="/admin/auditoria-despachos" element={<AuditoriaDespachosPage />} />
+              <Route path="/admin/auditoria" element={<AuditoriaDespachosPage />} />
               <Route path="/admin/sucursales" element={<SucursalesPage />} />
-              <Route path="/admin/pedidos" element={<PagePlaceholder title="Pedidos" />} />
+              <Route
+                path="/admin/pedidos"
+                element={
+                  <ProtectedRoute roles={["superadmin"]}>
+                    <PedidosAdminPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="/admin/productos" element={<ProductosPage />} />
               <Route path="/admin/costos" element={<CostosPage />} />
               <Route path="/admin/recetas" element={<RecetasPage />} />
@@ -165,10 +181,10 @@ const App = () => (
               <Route path="/bodega/insumos" element={<InsumosPage />} />
             </Route>
 
-            {/* Contador / RRHH */}
+            {/* Contador / RRHH (+ admin/superadmin lectura) */}
             <Route
               element={
-                <ProtectedRoute roles={["contador_rrhh"]}>
+                <ProtectedRoute roles={["contador_rrhh", "superadmin", "admin"]}>
                   <AppLayout />
                 </ProtectedRoute>
               }

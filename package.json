@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "release:manifest": "node scripts/crear-release.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -46,6 +47,8 @@
     "@tanstack/react-query": "^5.83.0",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/cli": "^2.11.2",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -66,6 +69,7 @@
     "tailwindcss-animate": "^1.0.7",
     "tauri-plugin-printer-v2": "^0.2.4",
     "vaul": "^0.9.9",
+    "xlsx": "^0.18.5",
     "zod": "^3.25.76",
     "zustand": "^5.0.13"
   },

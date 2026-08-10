@@ -577,6 +577,51 @@ export type Database = {
           },
         ]
       }
+      log_cambios_pedido: {
+        Row: {
+          id: string
+          pedido_id: string | null
+          usuario_id: string | null
+          campo: string
+          valor_anterior: string | null
+          valor_nuevo: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          pedido_id?: string | null
+          usuario_id?: string | null
+          campo: string
+          valor_anterior?: string | null
+          valor_nuevo?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          pedido_id?: string | null
+          usuario_id?: string | null
+          campo?: string
+          valor_anterior?: string | null
+          valor_nuevo?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "log_cambios_pedido_pedido_id_fkey"
+            columns: ["pedido_id"]
+            isOneToOne: false
+            referencedRelation: "pedidos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "log_cambios_pedido_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pagos_turno: {
         Row: {
           created_at: string | null
@@ -677,6 +722,7 @@ export type Database = {
           cliente_telefono: string | null
           comanda_impresa: boolean | null
           costo_despacho: number | null
+          costo_despacho_calculado: number | null
           created_at: string | null
           cupon_id: string | null
           descuento: number | null
@@ -720,6 +766,7 @@ export type Database = {
           cliente_telefono?: string | null
           comanda_impresa?: boolean | null
           costo_despacho?: number | null
+          costo_despacho_calculado?: number | null
           created_at?: string | null
           cupon_id?: string | null
           descuento?: number | null
@@ -763,6 +810,7 @@ export type Database = {
           cliente_telefono?: string | null
           comanda_impresa?: boolean | null
           costo_despacho?: number | null
+          costo_despacho_calculado?: number | null
           created_at?: string | null
           cupon_id?: string | null
           descuento?: number | null
@@ -1000,6 +1048,206 @@ export type Database = {
             columns: ["turno_id"]
             isOneToOne: false
             referencedRelation: "turnos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      despachos_manuales: {
+        Row: {
+          actualizado_por: string | null
+          creado_por: string | null
+          created_at: string | null
+          concepto: string
+          despachador_id: string
+          id: string
+          monto: number
+          turno_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          actualizado_por?: string | null
+          creado_por?: string | null
+          created_at?: string | null
+          concepto: string
+          despachador_id: string
+          id?: string
+          monto: number
+          turno_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          actualizado_por?: string | null
+          creado_por?: string | null
+          created_at?: string | null
+          concepto?: string
+          despachador_id?: string
+          id?: string
+          monto?: number
+          turno_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "despachos_manuales_despachador_id_fkey"
+            columns: ["despachador_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "despachos_manuales_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "despachos_manuales_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "despachos_manuales_turno_id_fkey"
+            columns: ["turno_id"]
+            isOneToOne: false
+            referencedRelation: "turnos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      despachos_manuales_cambios: {
+        Row: {
+          changed_at: string
+          concepto: string
+          despachador_id: string
+          despacho_id: string
+          id: string
+          monto_anterior: number | null
+          monto_nuevo: number | null
+          operacion: string
+          turno_id: string
+          usuario_id: string | null
+        }
+        Insert: {
+          changed_at?: string
+          concepto: string
+          despachador_id: string
+          despacho_id: string
+          id?: string
+          monto_anterior?: number | null
+          monto_nuevo?: number | null
+          operacion: string
+          turno_id: string
+          usuario_id?: string | null
+        }
+        Update: {
+          changed_at?: string
+          concepto?: string
+          despachador_id?: string
+          despacho_id?: string
+          id?: string
+          monto_anterior?: number | null
+          monto_nuevo?: number | null
+          operacion?: string
+          turno_id?: string
+          usuario_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "despachos_manuales_cambios_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pedidos_despacho_ajustes: {
+        Row: {
+          changed_at: string
+          costo_anterior: number | null
+          costo_calculado: number
+          costo_cobrado: number
+          diferencia: number
+          distancia_km: number | null
+          id: string
+          numero_pedido: number | null
+          operacion: string
+          pedido_id: string
+          sucursal_id: string
+          turno_id: string
+          usuario_id: string | null
+        }
+        Insert: {
+          changed_at?: string
+          costo_anterior?: number | null
+          costo_calculado: number
+          costo_cobrado: number
+          diferencia?: number
+          distancia_km?: number | null
+          id?: string
+          numero_pedido?: number | null
+          operacion: string
+          pedido_id: string
+          sucursal_id: string
+          turno_id: string
+          usuario_id?: string | null
+        }
+        Update: {
+          changed_at?: string
+          costo_anterior?: number | null
+          costo_calculado?: number
+          costo_cobrado?: number
+          diferencia?: number
+          distancia_km?: number | null
+          id?: string
+          numero_pedido?: number | null
+          operacion?: string
+          pedido_id?: string
+          sucursal_id?: string
+          turno_id?: string
+          usuario_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pedidos_despacho_ajustes_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      precios_trabajador: {
+        Row: {
+          id: string
+          producto_id: string
+          precio_trabajador: number
+          activo: boolean | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          producto_id: string
+          precio_trabajador: number
+          activo?: boolean | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          producto_id?: string
+          precio_trabajador?: number
+          activo?: boolean | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "precios_trabajador_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: true
+            referencedRelation: "productos"
             referencedColumns: ["id"]
           },
         ]
@@ -1540,6 +1788,9 @@ export type Database = {
         Row: {
           caja_chica_apertura: number
           closed_at: string | null
+          comentario_contador: string | null
+          comentario_contador_fecha: string | null
+          comentario_contador_usuario_id: string | null
           created_at: string | null
           diferencia_caja: number | null
           efectivo_declarado: number | null
@@ -1557,6 +1808,9 @@ export type Database = {
         Insert: {
           caja_chica_apertura?: number
           closed_at?: string | null
+          comentario_contador?: string | null
+          comentario_contador_fecha?: string | null
+          comentario_contador_usuario_id?: string | null
           created_at?: string | null
           diferencia_caja?: number | null
           efectivo_declarado?: number | null
@@ -1574,6 +1828,9 @@ export type Database = {
         Update: {
           caja_chica_apertura?: number
           closed_at?: string | null
+          comentario_contador?: string | null
+          comentario_contador_fecha?: string | null
+          comentario_contador_usuario_id?: string | null
           created_at?: string | null
           diferencia_caja?: number | null
           efectivo_declarado?: number | null
@@ -1589,6 +1846,13 @@ export type Database = {
           tomador_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "turnos_comentario_contador_usuario_id_fkey"
+            columns: ["comentario_contador_usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "turnos_sucursal_id_fkey"
             columns: ["sucursal_id"]
@@ -1751,6 +2015,7 @@ export type Database = {
         | "cumpleanos"
         | "cupon"
         | "canje"
+        | "trabajador"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1920,6 +2185,7 @@ export const Constants = {
         "cumpleanos",
         "cupon",
         "canje",
+        "trabajador",
       ],
     },
   },

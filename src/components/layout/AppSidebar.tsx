@@ -30,6 +30,7 @@ import {
   Map,
   GitCompareArrows,
   Wallet,
+  History,
 } from "lucide-react";
 import {
   Sidebar,
@@ -52,12 +53,14 @@ type Item = { title: string; url: string; icon: typeof LayoutDashboard };
 const menuPorRol: Record<Rol, Item[]> = {
   superadmin: [
     { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
+    { title: "Panel de Auditoría", url: "/admin/auditoria", icon: History },
     { title: "Sucursales", url: "/admin/sucursales", icon: Store },
     { title: "Pedidos", url: "/admin/pedidos", icon: ClipboardList },
     { title: "Productos", url: "/admin/productos", icon: ShoppingBag },
     { title: "Costos", url: "/admin/costos", icon: DollarSign },
     { title: "Recetas", url: "/admin/recetas", icon: BookOpen },
     { title: "Promociones", url: "/admin/promociones", icon: Target },
+    { title: "Caja por Día", url: "/contador", icon: Calculator },
     { title: "Reportes", url: "/admin/reportes", icon: BarChart3 },
     { title: "Usuarios", url: "/admin/usuarios", icon: Users },
     { title: "Base Despachadores", url: "/admin/base-despachadores", icon: Bike },
@@ -66,12 +69,13 @@ const menuPorRol: Record<Rol, Item[]> = {
   ],
   admin: [
     { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
+    { title: "Panel de Auditoría", url: "/admin/auditoria", icon: History },
     { title: "Sucursales", url: "/admin/sucursales", icon: Store },
-    { title: "Pedidos", url: "/admin/pedidos", icon: ClipboardList },
     { title: "Productos", url: "/admin/productos", icon: ShoppingBag },
     { title: "Costos", url: "/admin/costos", icon: DollarSign },
     { title: "Recetas", url: "/admin/recetas", icon: BookOpen },
     { title: "Promociones", url: "/admin/promociones", icon: Target },
+    { title: "Caja por Día", url: "/contador", icon: Calculator },
     { title: "Reportes", url: "/admin/reportes", icon: BarChart3 },
     { title: "Usuarios", url: "/admin/usuarios", icon: Users },
     { title: "Base Despachadores", url: "/admin/base-despachadores", icon: Bike },

@@ -1,4 +1,4 @@
-import { formatSaborExtra, type ComandaCocinaTipo, type ComandaItem } from "@/lib/printComanda";
+import { formatSaborExtra, type ComandaItem, normalizarTipoComanda } from "@/lib/printComanda";
 import type { PedidoImpresion } from "@/services/printer";
 
 type PedidoItemRow = {
@@ -52,6 +52,10 @@ export function parseItemNotas(notas: string | null | undefined): {
     const promoPrecio = parte.match(/^\[PROMO_PRECIO:(\d+)\]$/);
     if (promoPrecio) {
       precioOriginal = parseInt(promoPrecio[1], 10);
+      continue;
+    }
+    if (/^\[PRECIO TRABAJADOR\]$/i.test(parte)) {
+      promoParts.push(parte);
       continue;
     }
     if (/^\[PROMO /i.test(parte)) {
@@ -137,6 +141,8 @@ export type PedidoParaImpresion = {
   metodo_pago?: string | null;
   pago_registrado?: boolean | null;
   monto_recibido?: number | null;
+  jarros_prometidos?: number | null;
+  promo_tipo?: string | null;
   pedido_items?: PedidoItemRow[];
 };
 
@@ -154,8 +160,11 @@ export function buildPedidoImpresion(
     }),
   );
 
-  const tipoComanda =
-    pedido.tipo === "despacho" || pedido.tipo === "delivery" ? "despacho" as const : "retiro" as const;
+  const tipoComanda = normalizarTipoComanda(pedido.tipo);
+  const descuento = pedido.descuento ?? 0;
+  const jarrosPrometidos = pedido.jarros_prometidos ?? 0;
+  const descuentoJarros = jarrosPrometidos > 0 ? descuento : 0;
+  const promoLabel = pedido.promo_tipo === "trabajador" ? "PRECIO TRABAJADOR" : null;
 
   return {
     toma: {
@@ -170,24 +179,30 @@ export function buildPedidoImpresion(
       despachador: opts.despachadorNombre ?? null,
       items,
       subtotal: pedido.subtotal,
-      descuento: pedido.descuento ?? 0,
+      descuento,
       costoDespacho: pedido.costo_despacho ?? 0,
       total: pedido.total,
       notas: pedido.notas,
       metodoPago: pedido.metodo_pago ?? null,
       pagoRegistrado: pedido.pago_registrado ?? false,
       montoRecibido: pedido.monto_recibido ?? null,
+      promoLabel,
     },
     cocina: {
       numero: pedido.numero_pedido ?? "—",
       sucursalNombre: opts.sucursalNombre,
-      tipo: (pedido.tipo || "local") as ComandaCocinaTipo,
+      tipo: tipoComanda,
       cliente: pedido.cliente_nombre,
       telefono: pedido.cliente_telefono,
       direccion: pedido.direccion_entrega,
       referencia: pedido.referencia_entrega,
       items: buildComandaCocinaItems(items),
       notas: pedido.notas,
+      total: pedido.total,
+      subtotal: pedido.subtotal,
+      descuentoJarros,
+      metodoPago: pedido.metodo_pago ?? null,
+      pagoRegistrado: pedido.pago_registrado ?? false,
     },
   };
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Loader2, Truck, Store, Search, X, Plus, Minus, Trash2, Banknote, Landmark, CreditCard, Printer } from "lucide-react";
+import { Loader2, Truck, Store, Search, X, Plus, Minus, Trash2, Banknote, Landmark, CreditCard, Printer, Pencil } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
@@ -16,8 +20,9 @@ import SeleccionImpresionModal from "@/components/SeleccionImpresionModal";
 import type { ComandaItem } from "@/lib/printComanda";
 import { comandaItemFromPedidoItem } from "@/lib/pedidoImpresion";
 import { referenciaPagoTransferencia } from "@/lib/referenciaPago";
+import { calcularDescuentoJarros } from "@/lib/descuentoJarros";
 import { TIPO_META, type TipoPedido } from "@/lib/tiposPedido";
-import { PromoPedidoBadge, DesglosePrecioPedido, tienePromo } from "@/lib/promoPedido";
+import { PromoPedidoBadge, DesglosePrecioPedido, tienePromo, esPedidoTrabajador } from "@/lib/promoPedido";
 import { cn } from "@/lib/utils";
 
 type Estado = "en_preparacion" | "listo" | "en_despacho" | "entregado" | "cancelado";
@@ -42,6 +47,8 @@ interface Pedido {
   costo_despacho: number | null;
   metodo_pago: string | null;
   monto_recibido: number | null;
+  vuelto: number | null;
+  referencia_pago: string | null;
   direccion_entrega: string | null;
   referencia_entrega: string | null;
   despachador_id: string | null;
@@ -64,6 +71,8 @@ interface EditItem {
   producto_id: string;
   nombre: string;
   precio_unitario: number;
+  /** Precio catálogo sin extras (para descuento jarros). */
+  precio_base?: number | null;
   cantidad: number;
   descuento_item?: number | null;
   notas?: string | null;
@@ -78,6 +87,25 @@ const ESTADO_META: Record<Estado, { label: string; cls: string; col: string; sig
 };
 
 const esPedidoExterno = (tipo: string) => tipo === "uber" || tipo === "rappi";
+
+const LABEL_METODO_PAGO: Record<string, string> = {
+  efectivo: "Efectivo",
+  transferencia: "Transferencia",
+  tarjeta: "Tarjeta",
+  mixto: "Mixto",
+  cortesia: "Cortesía",
+};
+
+function labelMetodoPago(m: string | null | undefined): string {
+  if (!m) return "Pendiente";
+  return LABEL_METODO_PAGO[m] ?? m;
+}
+
+interface PagoTurnoDetalle {
+  metodo: string;
+  monto: number;
+  referencia: string | null;
+}
 
 function labelAccionEstado(tipo: string, estado: Estado): string {
   if (estado === "entregado" && esPedidoExterno(tipo)) return "Marcar entregado";
@@ -96,27 +124,12 @@ function jarrosDeclaradosDePedido(p: { jarros_prometidos: number | null; notas: 
 interface ItemJarrosCalc {
   precio_unitario: number;
   cantidad: number;
+  precio_base?: number | null;
+  notas?: string | null;
 }
 
 function calcularDescuentoJarrosEntrega(jarros: number, pedidoItems: ItemJarrosCalc[]) {
-  const itemsPagos = pedidoItems.filter((it) => it.precio_unitario > 0);
-  const totalProductos = pedidoItems.reduce((acc, it) => acc + it.cantidad, 0);
-  const tragosGratis = Math.min(Math.floor(jarros / 4), totalProductos);
-  const sobrantes = jarros % 4;
-  const precios: number[] = [];
-  for (const it of itemsPagos) {
-    for (let i = 0; i < it.cantidad; i++) precios.push(it.precio_unitario);
-  }
-  precios.sort((a, b) => b - a);
-  const descuentoTragos = precios.slice(0, tragosGratis).reduce((a, p) => a + p, 0);
-  const descuentoSobrantes = sobrantes * 1000;
-  return {
-    tragosGratis,
-    sobrantes,
-    descuentoTragos,
-    descuentoSobrantes,
-    total: descuentoTragos + descuentoSobrantes,
-  };
+  return calcularDescuentoJarros(jarros, pedidoItems);
 }
 
 const fmtCLP = (n: number) =>
@@ -225,7 +238,7 @@ export default function MisPedidosTab({ turno }: { turno: Turno }) {
   const cargar = async () => {
     const { data } = await supabase
       .from("pedidos")
-      .select("id, numero_pedido, cliente_nombre, cliente_telefono, tipo, estado, total, subtotal, descuento, costo_despacho, metodo_pago, monto_recibido, direccion_entrega, referencia_entrega, despachador_id, notas, created_at, hora_agendada, jarros_prometidos, jarros_entregados, promo_tipo, cupon_id, pago_registrado")
+      .select("id, numero_pedido, cliente_nombre, cliente_telefono, tipo, estado, total, subtotal, descuento, costo_despacho, metodo_pago, monto_recibido, vuelto, referencia_pago, direccion_entrega, referencia_entrega, despachador_id, notas, created_at, hora_agendada, jarros_prometidos, jarros_entregados, promo_tipo, cupon_id, pago_registrado")
       .eq("turno_id", turno.id)
       .order("numero_pedido", { ascending: false });
     setPedidos(((data as Pedido[]) ?? []).map((p) => ({ ...p, estado: normalizarEstado(p.estado) })));
@@ -519,7 +532,15 @@ export default function MisPedidosTab({ turno }: { turno: Turno }) {
 
                 {(tienePromo(p) || p.pago_registrado || p.tipo === "uber" || p.tipo === "rappi") && (
                   <div className="flex flex-wrap gap-1 mt-0.5">
-                    {tienePromo(p) && (
+                    {esPedidoTrabajador(p) ? (
+                      <Badge
+                        className="text-[8px] px-1 py-0 font-bold border"
+                        variant="outline"
+                        style={{ backgroundColor: "#7FFF00", color: "#1a4d1a", borderColor: "#5cb800" }}
+                      >
+                        👷 TRABAJADOR
+                      </Badge>
+                    ) : tienePromo(p) ? (
                       <Badge
                         className="text-[8px] px-1 py-0 font-bold border"
                         variant="outline"
@@ -527,7 +548,7 @@ export default function MisPedidosTab({ turno }: { turno: Turno }) {
                       >
                         🏷️ PROMO
                       </Badge>
-                    )}
+                    ) : null}
                     {p.pago_registrado && (
                       <Badge className="bg-success/15 text-success border-success/40 text-[8px] px-1 py-0 font-bold" variant="outline">
                         ✓ PAGADO
@@ -632,7 +653,11 @@ function PedidoDetalleModal({
   const [jarrosEntregadosFinal, setJarrosEntregadosFinal] = useState(0);
   const [totalEntrega, setTotalEntrega] = useState(0);
   const [entregoJarros, setEntregoJarros] = useState<boolean | null>(null);
+  const [alertaSinDespachador, setAlertaSinDespachador] = useState(false);
+  const [cambiandoDespachador, setCambiandoDespachador] = useState(false);
+  const [guardandoDespachador, setGuardandoDespachador] = useState(false);
   const pagoTransferRefTouched = useRef(false);
+  const [pagosDetalle, setPagosDetalle] = useState<PagoTurnoDetalle[]>([]);
 
   useEffect(() => {
     if (!pedido) return;
@@ -645,6 +670,7 @@ function PedidoDetalleModal({
     setTipo(familia(pedido.tipo) === "delivery" ? "despacho" : "retiro");
     setCancelarOpen(false);
     setMotivo("");
+    setPagosDetalle([]);
     // Jarros prometidos al tomar el pedido (fallback a notas antiguas)
     let compr = pedido.jarros_prometidos ?? 0;
     if (!compr) {
@@ -652,33 +678,58 @@ function PedidoDetalleModal({
       compr = m ? parseInt(m[1], 10) || 0 : 0;
     }
     setJarrosComprometidos(compr);
+    setCambiandoDespachador(false);
     setLoading(true);
     (async () => {
-      const [itemsRes, prodRes, catRes, sxRes] = await Promise.all([
+      const entregado = normalizarEstado(pedido.estado) === "entregado";
+      const [itemsRes, prodRes, catRes, sxRes, pagosRes] = await Promise.all([
         supabase
           .from("pedido_items")
-          .select("id, cantidad, precio_unitario, descuento_item, notas, producto_id, producto:producto_id(nombre)")
+          .select("id, cantidad, precio_unitario, descuento_item, notas, producto_id, producto:producto_id(nombre, precio)")
           .eq("pedido_id", pedido.id),
         supabase.from("productos").select("id,nombre,precio,categoria_id,activo").eq("activo", true).order("nombre"),
         supabase.from("categorias").select("id,nombre,orden").order("orden"),
         supabase.from("sabores_extra").select("id,nombre,precio").eq("activo", true).order("nombre"),
+        entregado
+          ? supabase
+              .from("pagos_turno")
+              .select("metodo, monto, referencia")
+              .eq("pedido_id", pedido.id)
+          : Promise.resolve({ data: null }),
       ]);
-      const its = ((itemsRes.data as unknown as Array<{ id: string; cantidad: number; precio_unitario: number; descuento_item: number | null; notas: string | null; producto_id: string; producto: { nombre: string } | null }>) ?? []).map((r) => ({
-        id: r.id,
-        producto_id: r.producto_id,
-        nombre: r.producto?.nombre ?? "—",
-        precio_unitario: r.precio_unitario,
-        cantidad: r.cantidad,
-        descuento_item: r.descuento_item,
-        notas: r.notas,
-      }));
+      const prods = (prodRes.data as ProductoCat[]) ?? [];
+      const its = ((itemsRes.data as unknown as Array<{
+        id: string;
+        cantidad: number;
+        precio_unitario: number;
+        descuento_item: number | null;
+        notas: string | null;
+        producto_id: string;
+        producto: { nombre: string; precio: number } | null;
+      }>) ?? []).map((r) => {
+        const precioBase =
+          r.producto?.precio != null
+            ? Number(r.producto.precio)
+            : (prods.find((p) => p.id === r.producto_id)?.precio ?? r.precio_unitario);
+        return {
+          id: r.id,
+          producto_id: r.producto_id,
+          nombre: r.producto?.nombre ?? "—",
+          precio_unitario: r.precio_unitario,
+          precio_base: precioBase,
+          cantidad: r.cantidad,
+          descuento_item: r.descuento_item,
+          notas: r.notas,
+        };
+      });
       setItems(its);
       setOriginalItemIds(its.map((i) => i.id!).filter(Boolean));
       setOriginalItemsTotal(its.reduce((acc, it) => acc + it.precio_unitario * it.cantidad, 0));
       setOriginalItemsSnapshot(its.map((i) => ({ ...i })));
-      setProductos((prodRes.data as ProductoCat[]) ?? []);
+      setProductos(prods);
       setCategorias((catRes.data as CategoriaCat[]) ?? []);
       setSabores((sxRes.data as SaborExtra[]) ?? []);
+      setPagosDetalle(((pagosRes.data as PagoTurnoDetalle[] | null) ?? []).filter((p) => Number(p.monto) > 0));
       setLoading(false);
     })();
   }, [pedido]);
@@ -686,6 +737,7 @@ function PedidoDetalleModal({
   if (!pedido) return null;
   const meta = ESTADO_META[normalizarEstado(pedido.estado)];
   const estadoActual = normalizarEstado(pedido.estado);
+  const pedidoCerrado = estadoActual === "entregado" || estadoActual === "cancelado";
 
   const subtotal = items.reduce((acc, it) => acc + it.precio_unitario * it.cantidad, 0);
   // NO recalcular promos al editar. Total editado = pedido.total original + delta de items.
@@ -710,7 +762,14 @@ function PedidoDetalleModal({
     const extrasPrecio = extras.reduce((a, e) => a + e.precio, 0);
     const precio = p.precio + extrasPrecio;
     const nota = extras.length > 0 ? `Extras: ${extras.map((e) => formatSaborExtra(e.nombre)).join(", ")}` : null;
-    setItems((prev) => [...prev, { producto_id: p.id, nombre: p.nombre, precio_unitario: precio, cantidad: 1, notas: nota }]);
+    setItems((prev) => [...prev, {
+      producto_id: p.id,
+      nombre: p.nombre,
+      precio_unitario: precio,
+      precio_base: p.precio,
+      cantidad: 1,
+      notas: nota,
+    }]);
   };
   const confirmarExtras = (conExtras: boolean) => {
     if (!extrasFor) return;
@@ -725,52 +784,70 @@ function PedidoDetalleModal({
     return true;
   });
 
+  const esTipoDespacho = (t: string) => t === "despacho" || t === "delivery";
+
+  const iniciarFlujoEntrega = async () => {
+    if (!pedido?.id) { toast.error("Pedido sin ID, recargá la página"); return; }
+    if (esPedidoExterno(pedido.tipo)) {
+      const { error, data } = await supabase
+        .from("pedidos")
+        .update({
+          estado: "entregado",
+          metodo_pago: "cortesia",
+          pago_registrado: true,
+        })
+        .eq("id", pedido.id)
+        .select("id");
+      if (error) { console.error("[pedidos] update entregado externo error:", error); toast.error(error.message); return; }
+      if (!data?.length) { toast.error("No se pudo actualizar el pedido"); return; }
+      toast.success("Pedido marcado como entregado");
+      onChanged();
+      return;
+    }
+    if (pedido.pago_registrado) {
+      const { error, data } = await supabase
+        .from("pedidos")
+        .update({ estado: "entregado" })
+        .eq("id", pedido.id)
+        .select("id");
+      if (error) { console.error("[pedidos] update entregado error:", error); toast.error(error.message); return; }
+      if (!data?.length) { toast.error("No se pudo actualizar el pedido"); return; }
+      toast.success("Pedido entregado (pago ya registrado)");
+      onChanged();
+      return;
+    }
+    // abrir modal de confirmación de pago (solo si aún no hay pago)
+    setPagoEfectivo("");
+    setPagoTransfer("");
+    setPagoTransferRef("");
+    pagoTransferRefTouched.current = false;
+    setPagoTarjeta("");
+    setPagoObs("");
+    const declarados = jarrosDeclaradosDePedido(pedido);
+    setTotalEntrega(pedido.total);
+    setEntregoJarros(null);
+    setJarrosRealesInput("0");
+    setJarrosEntregadosFinal(0);
+    setPasoEntrega(declarados > 0 ? "jarros" : "pago");
+    setPagoOpen(true);
+  };
+
   const cambiarEstado = async (nuevo: Estado) => {
     console.log("[pedidos] cambiarEstado → id:", pedido?.id, "nuevo:", nuevo);
     if (!pedido?.id) { toast.error("Pedido sin ID, recargá la página"); return; }
+    const actual = normalizarEstado(pedido.estado);
+    if (actual === "entregado" || actual === "cancelado") {
+      toast.error(actual === "entregado"
+        ? "Pedido entregado — no se puede modificar"
+        : "Pedido cancelado — no se puede modificar");
+      return;
+    }
     if (nuevo === "entregado") {
-      if (esPedidoExterno(pedido.tipo)) {
-        const { error, data } = await supabase
-          .from("pedidos")
-          .update({
-            estado: "entregado",
-            metodo_pago: "cortesia",
-            pago_registrado: true,
-          })
-          .eq("id", pedido.id)
-          .select("id");
-        if (error) { console.error("[pedidos] update entregado externo error:", error); toast.error(error.message); return; }
-        if (!data?.length) { toast.error("No se pudo actualizar el pedido"); return; }
-        toast.success("Pedido marcado como entregado");
-        onChanged();
+      if (esTipoDespacho(pedido.tipo) && !pedido.despachador_id) {
+        setAlertaSinDespachador(true);
         return;
       }
-      if (pedido.pago_registrado) {
-        const { error, data } = await supabase
-          .from("pedidos")
-          .update({ estado: "entregado" })
-          .eq("id", pedido.id)
-          .select("id");
-        if (error) { console.error("[pedidos] update entregado error:", error); toast.error(error.message); return; }
-        if (!data?.length) { toast.error("No se pudo actualizar el pedido"); return; }
-        toast.success("Pedido entregado (pago ya registrado)");
-        onChanged();
-        return;
-      }
-      // abrir modal de confirmación de pago
-      setPagoEfectivo("");
-      setPagoTransfer("");
-      setPagoTransferRef("");
-      pagoTransferRefTouched.current = false;
-      setPagoTarjeta("");
-      setPagoObs("");
-      const declarados = jarrosDeclaradosDePedido(pedido);
-      setTotalEntrega(pedido.total);
-      setEntregoJarros(null);
-      setJarrosRealesInput("0");
-      setJarrosEntregadosFinal(0);
-      setPasoEntrega(declarados > 0 ? "jarros" : "pago");
-      setPagoOpen(true);
+      await iniciarFlujoEntrega();
       return;
     }
     const { error, data } = await supabase
@@ -784,29 +861,60 @@ function PedidoDetalleModal({
     onChanged();
   };
 
+  const guardarDespachadorCerrado = async (nuevoId: string) => {
+    if (!pedido?.id) return;
+    const despachadorId = nuevoId === "__none__" ? null : nuevoId;
+    setGuardandoDespachador(true);
+    const { error } = await supabase
+      .from("pedidos")
+      .update({ despachador_id: despachadorId })
+      .eq("id", pedido.id);
+    setGuardandoDespachador(false);
+    if (error) { toast.error(error.message); return; }
+    setDespId(nuevoId);
+    setCambiandoDespachador(false);
+    toast.success(despachadorId ? "Despachador actualizado" : "Despachador quitado");
+    onChanged();
+  };
+
   const pagoEf = parseInt(pagoEfectivo || "0", 10) || 0;
   const pagoTr = parseInt(pagoTransfer || "0", 10) || 0;
   const pagoTa = parseInt(pagoTarjeta || "0", 10) || 0;
   const pagoIngresado = pagoEf + pagoTr + pagoTa;
-  const totalACobrar = totalEntrega;
-  const pagoDiferencia = pagoIngresado - totalACobrar;
-  const esEntregaGratuita = totalACobrar === 0;
   const subtotalPedido = pedido.subtotal ?? subtotal;
   const costoDespachoPedido = pedido.costo_despacho ?? 0;
   const descuentoJarrosAplicado = pedido.descuento ?? 0;
+  const sinJarrosDeclarados = jarrosComprometidos <= 0;
   const jarrosRealesParcial = Math.min(
     jarrosComprometidos,
     Math.max(0, parseInt(jarrosRealesInput || "0", 10) || 0),
   );
+  const jarrosAlEntregarInput = Math.max(0, parseInt(jarrosRealesInput || "0", 10) || 0);
   const descuentoParcialCalc = calcularDescuentoJarrosEntrega(jarrosRealesParcial, items);
   const descuentoParcialPreview = jarrosRealesParcial === 0 ? 0 : descuentoParcialCalc.total;
   const totalParcialPreview = Math.max(
     0,
     subtotalPedido + costoDespachoPedido - descuentoParcialPreview,
   );
+  const descuentoAlEntregarCalc = calcularDescuentoJarrosEntrega(jarrosAlEntregarInput, items);
+  const descuentoAlEntregarPreview = jarrosAlEntregarInput === 0 ? 0 : descuentoAlEntregarCalc.total;
+  const descuentoBasePedido = pedido.descuento ?? 0;
+  const totalAlEntregarPreview = Math.max(
+    0,
+    subtotalPedido + costoDespachoPedido - (descuentoBasePedido + descuentoAlEntregarPreview),
+  );
+  const totalACobrar = sinJarrosDeclarados && pasoEntrega === "pago"
+    ? totalAlEntregarPreview
+    : totalEntrega;
+  const pagoDiferencia = pagoIngresado - totalACobrar;
+  const esEntregaGratuita = totalACobrar === 0;
 
   const notaJarrosEntrega = (): string | null => {
-    if (jarrosComprometidos <= 0) return null;
+    if (sinJarrosDeclarados) {
+      if (jarrosAlEntregarInput <= 0) return null;
+      const desc = descuentoAlEntregarPreview;
+      return `[JARROS ENTREGADOS] ${jarrosAlEntregarInput}${desc > 0 ? ` · descuento jarros −${fmtCLP(desc)}` : ""}`;
+    }
     if (entregoJarros === true) {
       return `[JARROS ENTREGADOS] ${jarrosComprometidos} (declarados: ${jarrosComprometidos})`;
     }
@@ -815,6 +923,11 @@ function PedidoDetalleModal({
     }
     const desc = calcularDescuentoJarrosEntrega(jarrosEntregadosFinal, items).total;
     return `[JARROS ENTREGADOS] ${jarrosEntregadosFinal} (declarados: ${jarrosComprometidos}${desc > 0 ? ` · descuento jarros −${fmtCLP(desc)}` : ""})`;
+  };
+
+  const cantidadJarrosEntrega = (): number => {
+    if (sinJarrosDeclarados) return jarrosAlEntregarInput;
+    return entregoJarros === true ? jarrosComprometidos : jarrosEntregadosFinal;
   };
 
   const sumarJarrosAlStock = async (sucursalId: string | undefined, cantidad: number) => {
@@ -867,10 +980,19 @@ function PedidoDetalleModal({
     return [pedido!.notas, ...extraNotas].filter(Boolean).join("\n") || null;
   };
 
-  const confirmarJarrosSi = () => {
+  const confirmarJarrosSi = async () => {
     if (!pedido?.id) { toast.error("Pedido sin ID"); return; }
+    // No recalcular: pedido.total ya trae el descuento desde el INSERT
+    setPagoSaving(true);
+    const { error } = await supabase
+      .from("pedidos")
+      .update({ jarros_entregados: jarrosComprometidos })
+      .eq("id", pedido.id);
+    setPagoSaving(false);
+    if (error) { toast.error(error.message); return; }
     setEntregoJarros(true);
     setJarrosEntregadosFinal(jarrosComprometidos);
+    setTotalEntrega(pedido.total);
     setPasoEntrega("pago");
   };
 
@@ -883,7 +1005,37 @@ function PedidoDetalleModal({
 
   const onJarrosRealesChange = (raw: string) => {
     const n = Math.max(0, parseInt(raw || "0", 10) || 0);
+    if (sinJarrosDeclarados) {
+      setJarrosRealesInput(String(n));
+      setJarrosEntregadosFinal(n);
+      return;
+    }
     setJarrosRealesInput(String(Math.min(n, jarrosComprometidos)));
+  };
+
+  /** Persiste jarros agregados al entregar (pedido sin jarros declarados). */
+  const aplicarJarrosAlEntregar = async (): Promise<{ ok: boolean; total: number; jarros: number }> => {
+    const jarros = jarrosAlEntregarInput;
+    if (!sinJarrosDeclarados || jarros <= 0) {
+      return { ok: true, total: totalACobrar, jarros: cantidadJarrosEntrega() };
+    }
+    const nuevoDescuento = descuentoBasePedido + descuentoAlEntregarCalc.total;
+    const nuevoTotal = Math.max(0, subtotalPedido + costoDespachoPedido - nuevoDescuento);
+    const { error } = await supabase
+      .from("pedidos")
+      .update({
+        jarros_entregados: jarros,
+        descuento: nuevoDescuento,
+        total: nuevoTotal,
+      })
+      .eq("id", pedido!.id);
+    if (error) {
+      toast.error(error.message);
+      return { ok: false, total: totalACobrar, jarros };
+    }
+    setJarrosEntregadosFinal(jarros);
+    setTotalEntrega(nuevoTotal);
+    return { ok: true, total: nuevoTotal, jarros };
   };
 
   const confirmarJarrosCantidad = async () => {
@@ -914,6 +1066,9 @@ function PedidoDetalleModal({
     if (!pedido?.id) { toast.error("Pedido sin ID"); return; }
     setPagoSaving(true);
 
+    const aplicado = await aplicarJarrosAlEntregar();
+    if (!aplicado.ok) { setPagoSaving(false); return; }
+
     const { data: pedDb } = await supabase.from("pedidos").select("turno_id,sucursal_id").eq("id", pedido.id).maybeSingle();
     const sucursalId = (pedDb as { turno_id?: string; sucursal_id?: string } | null)?.sucursal_id;
 
@@ -923,9 +1078,8 @@ function PedidoDetalleModal({
         estado: "entregado",
         notas: notasEntrega(),
         metodo_pago: "cortesia",
-        monto_recibido: 0,
         pago_registrado: true,
-        jarros_entregados: entregoJarros === true ? jarrosComprometidos : jarrosEntregadosFinal,
+        jarros_entregados: aplicado.jarros,
       })
       .eq("id", pedido.id)
       .select("id");
@@ -933,9 +1087,8 @@ function PedidoDetalleModal({
     if (error) { console.error("[pedidos] update entrega gratuita error:", error); toast.error(error.message); return; }
     if (!data?.length) { toast.error("No se pudo actualizar el pedido"); return; }
 
-    const cantidadStock = entregoJarros === true ? jarrosComprometidos : jarrosEntregadosFinal;
-    if (cantidadStock > 0) {
-      await sumarJarrosAlStock(sucursalId, cantidadStock);
+    if (aplicado.jarros > 0) {
+      await sumarJarrosAlStock(sucursalId, aplicado.jarros);
     }
     toast.success("Entrega gratuita confirmada");
     setPagoOpen(false);
@@ -946,6 +1099,11 @@ function PedidoDetalleModal({
   const confirmarPago = async () => {
     console.log("[pedidos] confirmarPago → id:", pedido?.id);
     if (!pedido?.id) { toast.error("Pedido sin ID"); return; }
+    if (pedido.pago_registrado) {
+      toast.error("El pago ya está registrado");
+      setPagoOpen(false);
+      return;
+    }
     if (esEntregaGratuita) {
       await confirmarEntregaGratuita();
       return;
@@ -955,11 +1113,24 @@ function PedidoDetalleModal({
     if (pagoDiferencia < 0 && !pagoObs.trim()) { toast.error("Indicá la observación por la diferencia"); return; }
     setPagoSaving(true);
 
+    const aplicado = await aplicarJarrosAlEntregar();
+    if (!aplicado.ok) { setPagoSaving(false); return; }
+
     // Obtener turno_id y sucursal_id desde la DB (no están en el objeto Pedido en memoria)
     const { data: pedDb } = await supabase.from("pedidos").select("turno_id,sucursal_id").eq("id", pedido.id).maybeSingle();
     const turnoId = (pedDb as { turno_id?: string; sucursal_id?: string } | null)?.turno_id;
     const sucursalId = (pedDb as { turno_id?: string; sucursal_id?: string } | null)?.sucursal_id;
     if (!turnoId) { setPagoSaving(false); toast.error("No se pudo obtener el turno del pedido"); return; }
+
+    const metodoDetectado: "efectivo" | "transferencia" | "tarjeta" | "mixto" =
+      pagoEf > 0 && pagoTr === 0 && pagoTa === 0 ? "efectivo"
+      : pagoTr > 0 && pagoEf === 0 && pagoTa === 0 ? "transferencia"
+      : pagoTa > 0 && pagoEf === 0 && pagoTr === 0 ? "tarjeta"
+      : "mixto";
+
+    const refTransferencia = pagoTr > 0
+      ? (pagoTransferRef.trim() || referenciaPagoTransferencia(pedido.numero_pedido) || null)
+      : null;
 
     const inserts: Array<{ turno_id: string; pedido_id: string; metodo: "efectivo" | "transferencia" | "tarjeta"; monto: number; referencia: string | null }> = [];
     if (pagoEf > 0) inserts.push({ turno_id: turnoId, pedido_id: pedido.id, metodo: "efectivo", monto: pagoEf, referencia: null });
@@ -968,9 +1139,13 @@ function PedidoDetalleModal({
       pedido_id: pedido.id,
       metodo: "transferencia",
       monto: pagoTr,
-      referencia: pagoTransferRef.trim() || referenciaPagoTransferencia(pedido.numero_pedido),
+      referencia: refTransferencia,
     });
     if (pagoTa > 0) inserts.push({ turno_id: turnoId, pedido_id: pedido.id, metodo: "tarjeta", monto: pagoTa, referencia: null });
+
+    // Reemplazar pagos previos para alinear pagos_turno con el método detectado
+    const { error: delPagErr } = await supabase.from("pagos_turno").delete().eq("pedido_id", pedido.id);
+    if (delPagErr) { setPagoSaving(false); toast.error(delPagErr.message); return; }
 
     if (inserts.length > 0) {
       const { error: pagErr } = await supabase.from("pagos_turno").insert(inserts);
@@ -984,21 +1159,19 @@ function PedidoDetalleModal({
     if (pagoDiferencia < 0) extraNotas.push(`[FALTANTE ${fmtCLP(Math.abs(pagoDiferencia))}] ${pagoObs.trim()}`);
     const nuevasNotas = [pedido.notas, ...extraNotas].filter(Boolean).join("\n") || null;
 
-    const metodoFinal: "efectivo" | "transferencia" | "tarjeta" | "mixto" =
-      [pagoEf, pagoTr, pagoTa].filter((x) => x > 0).length > 1
-        ? "mixto"
-        : pagoEf > 0 ? "efectivo" : pagoTr > 0 ? "transferencia" : "tarjeta";
-
-    const refTransferencia = pagoTr > 0 ? (pagoTransferRef.trim() || referenciaPagoTransferencia(pedido.numero_pedido) || null) : null;
-
+    // Sincronizar pedidos.metodo_pago con lo registrado en pagos_turno
     const { error, data } = await supabase
       .from("pedidos")
       .update({
         estado: "entregado",
         notas: nuevasNotas,
-        metodo_pago: metodoFinal,
+        metodo_pago: metodoDetectado,
         referencia_pago: refTransferencia,
-        jarros_entregados: entregoJarros === true ? jarrosComprometidos : jarrosEntregadosFinal,
+        pago_registrado: true,
+        jarros_entregados: aplicado.jarros,
+        ...(sinJarrosDeclarados && aplicado.jarros > 0
+          ? { descuento: descuentoBasePedido + descuentoAlEntregarCalc.total, total: aplicado.total }
+          : {}),
       })
       .eq("id", pedido.id)
       .select("id");
@@ -1006,9 +1179,8 @@ function PedidoDetalleModal({
     if (error) { console.error("[pedidos] update entregado error:", error); toast.error(error.message); return; }
     if (!data || data.length === 0) { toast.error("No se pudo actualizar el pedido (revisá permisos / id)"); return; }
 
-    const cantidadStock = entregoJarros === true ? jarrosComprometidos : jarrosEntregadosFinal;
-    if (cantidadStock > 0) {
-      await sumarJarrosAlStock(sucursalId, cantidadStock);
+    if (aplicado.jarros > 0) {
+      await sumarJarrosAlStock(sucursalId, aplicado.jarros);
     }
 
     toast.success("Pedido entregado");
@@ -1018,6 +1190,12 @@ function PedidoDetalleModal({
   };
 
   const guardarCambios = async () => {
+    if (pedidoCerrado) {
+      toast.error(estadoActual === "entregado"
+        ? "Pedido entregado — no se puede modificar"
+        : "Pedido cancelado — no se puede modificar");
+      return;
+    }
     if (items.length === 0) {
       toast.error("El pedido no puede quedar sin productos");
       return;
@@ -1118,9 +1296,19 @@ function PedidoDetalleModal({
   const confirmarCancelar = async () => {
     if (!motivo.trim()) { toast.error("Indicá el motivo"); return; }
     const nuevasNotas = [pedido.notas, `[CANCELADO] ${motivo.trim()}`].filter(Boolean).join("\n");
+
+    if (pedido.pago_registrado) {
+      const { error: delPagErr } = await supabase
+        .from("pagos_turno")
+        .delete()
+        .eq("pedido_id", pedido.id);
+      if (delPagErr) { toast.error(delPagErr.message); return; }
+    }
+
     const { error } = await supabase.from("pedidos").update({
       estado: "cancelado",
       notas: nuevasNotas,
+      ...(pedido.pago_registrado ? { pago_registrado: false } : {}),
     }).eq("id", pedido.id);
     if (error) { toast.error(error.message); return; }
     toast.success(`❌ Pedido #${pedido.numero_pedido} cancelado — Stock restaurado automáticamente`);
@@ -1129,6 +1317,7 @@ function PedidoDetalleModal({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-auto">
         <DialogHeader>
@@ -1159,9 +1348,11 @@ function PedidoDetalleModal({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <Label className="label-upper text-xs">Productos del pedido</Label>
-                <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCatalogoOpen(true)}>
-                  <Plus className="h-3 w-3 mr-1" /> Agregar producto
-                </Button>
+                {!pedidoCerrado && (
+                  <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCatalogoOpen(true)}>
+                    <Plus className="h-3 w-3 mr-1" /> Agregar producto
+                  </Button>
+                )}
               </div>
               <div className="bg-background border border-border rounded-md divide-y divide-border">
                 {loading ? (
@@ -1175,19 +1366,28 @@ function PedidoDetalleModal({
                       <div className="text-[10px] font-mono text-muted-foreground">{fmtCLP(it.precio_unitario)} c/u</div>
                       {it.notas && <div className="text-[10px] text-muted-foreground italic truncate">{it.notas.replace(/Pulpa de /gi, "")}</div>}
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button type="button" size="icon" variant="outline" className="h-6 w-6" onClick={() => cambiarCant(idx, -1)}>
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                      <span className="font-mono text-xs w-6 text-center">{it.cantidad}</span>
-                      <Button type="button" size="icon" variant="outline" className="h-6 w-6" onClick={() => cambiarCant(idx, 1)}>
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <div className="font-mono text-foreground w-20 text-right text-xs">{fmtCLP(it.precio_unitario * it.cantidad)}</div>
-                    <Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => eliminarItem(idx)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                    {!pedidoCerrado ? (
+                      <>
+                        <div className="flex items-center gap-1">
+                          <Button type="button" size="icon" variant="outline" className="h-6 w-6" onClick={() => cambiarCant(idx, -1)}>
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <span className="font-mono text-xs w-6 text-center">{it.cantidad}</span>
+                          <Button type="button" size="icon" variant="outline" className="h-6 w-6" onClick={() => cambiarCant(idx, 1)}>
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <div className="font-mono text-foreground w-20 text-right text-xs">{fmtCLP(it.precio_unitario * it.cantidad)}</div>
+                        <Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => eliminarItem(idx)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-mono text-xs w-6 text-center text-muted-foreground">×{it.cantidad}</span>
+                        <div className="font-mono text-foreground w-20 text-right text-xs">{fmtCLP(it.precio_unitario * it.cantidad)}</div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1199,15 +1399,90 @@ function PedidoDetalleModal({
                 costoDespachoOverride={costoDespacho}
                 totalOverride={totalCalc}
               />
-              <div className="flex justify-between text-xs pt-1 border-t border-border"><span className="text-muted-foreground">Pago</span><span className="uppercase">{pedido.metodo_pago ?? "pendiente"}</span></div>
-              {pedido.pago_registrado && (
-                <div className="text-xs text-success font-medium pt-1">✓ Pago registrado al crear el pedido</div>
+              {estadoActual !== "entregado" && (
+                <>
+                  <div className="flex justify-between text-xs pt-1 border-t border-border">
+                    <span className="text-muted-foreground">Pago</span>
+                    <span className="uppercase">{pedido.metodo_pago ?? "pendiente"}</span>
+                  </div>
+                  {pedido.pago_registrado ? (
+                    <div className="pt-1">
+                      <Badge
+                        className="text-[10px] px-2 py-0.5 font-bold border bg-success/15 text-success border-success/40"
+                        variant="outline"
+                      >
+                        ✅ Pagado
+                      </Badge>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-warning font-medium pt-1">⏳ Pago pendiente</div>
+                  )}
+                </>
               )}
             </div>
+
+            {estadoActual === "entregado" && (
+              <div className="bg-background border border-border rounded-md p-3 space-y-2 text-sm">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  💳 Información de pago
+                </div>
+
+                {esPedidoExterno(pedido.tipo) ? (
+                  <p className="text-sm font-semibold text-foreground">
+                    {pedido.tipo === "uber"
+                      ? "💳 Pago gestionado por Uber Eats"
+                      : "💳 Pago gestionado por Rappi"}
+                  </p>
+                ) : (pedido.metodo_pago === "mixto" || pagosDetalle.length > 1) && pagosDetalle.length > 0 ? (
+                  <div className="space-y-1">
+                    {pagosDetalle.map((p) => (
+                      <div key={`${p.metodo}-${p.monto}-${p.referencia ?? ""}`} className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">{labelMetodoPago(p.metodo)}</span>
+                        <span className="font-mono">{fmtCLP(Number(p.monto))}</span>
+                      </div>
+                    ))}
+                    {pagosDetalle.some((p) => p.metodo === "transferencia" && p.referencia) && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Referencia</span>
+                        <span className="font-mono">
+                          {pagosDetalle.find((p) => p.metodo === "transferencia" && p.referencia)?.referencia}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-xs pt-1 border-t border-border font-semibold">
+                      <span>Total</span>
+                      <span className="font-mono">
+                        {fmtCLP(pagosDetalle.reduce((a, p) => a + Number(p.monto), 0))}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Método</span>
+                      <span className="font-medium">{labelMetodoPago(pedido.metodo_pago)}</span>
+                    </div>
+                    {(pedido.referencia_pago || pagosDetalle.find((p) => p.referencia)?.referencia) && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Referencia</span>
+                        <span className="font-mono">
+                          {pedido.referencia_pago
+                            ?? pagosDetalle.find((p) => p.referencia)?.referencia}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className={`text-xs font-medium pt-1 border-t border-border ${pedido.pago_registrado ? "text-success" : "text-warning"}`}>
+                  {pedido.pago_registrado ? "✅ Pago registrado" : "⏳ Pago pendiente"}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Edición */}
-          <div className="space-y-3">
+          <div className={`space-y-3 ${pedidoCerrado ? "opacity-60 pointer-events-none" : ""}`}>
             <div className="space-y-1">
               <Label className="label-upper text-xs">Tipo</Label>
               <div className="grid grid-cols-2 gap-2">
@@ -1216,6 +1491,7 @@ function PedidoDetalleModal({
                   variant={tipo === "despacho" ? "default" : "outline"}
                   className={`h-12 ${tipo === "despacho" ? "bg-primary text-primary-foreground" : ""}`}
                   onClick={() => setTipo("despacho")}
+                  disabled={pedidoCerrado}
                 >
                   <Truck className="h-4 w-4 mr-2" /> Despacho
                 </Button>
@@ -1224,6 +1500,7 @@ function PedidoDetalleModal({
                   variant={tipo === "retiro" ? "default" : "outline"}
                   className={`h-12 ${tipo === "retiro" ? "bg-primary text-primary-foreground" : ""}`}
                   onClick={() => setTipo("retiro")}
+                  disabled={pedidoCerrado}
                 >
                   <Store className="h-4 w-4 mr-2" /> Retiro
                 </Button>
@@ -1231,20 +1508,20 @@ function PedidoDetalleModal({
             </div>
             <div className="space-y-2">
               <Label className="label-upper text-xs">Cliente</Label>
-              <Input value={cNombre} onChange={(e) => setCNombre(e.target.value)} className="bg-background" />
-              <Input value={cTel} onChange={(e) => setCTel(e.target.value)} placeholder="Teléfono" className="bg-background" />
+              <Input value={cNombre} onChange={(e) => setCNombre(e.target.value)} className="bg-background" disabled={pedidoCerrado} />
+              <Input value={cTel} onChange={(e) => setCTel(e.target.value)} placeholder="Teléfono" className="bg-background" disabled={pedidoCerrado} />
             </div>
             {tipo === "despacho" && (
               <div className="space-y-2">
                 <Label className="label-upper text-xs">Dirección</Label>
-                <Input value={dir} onChange={(e) => setDir(e.target.value)} className="bg-background" />
-                <Input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Referencia" className="bg-background" />
+                <Input value={dir} onChange={(e) => setDir(e.target.value)} className="bg-background" disabled={pedidoCerrado} />
+                <Input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Referencia" className="bg-background" disabled={pedidoCerrado} />
               </div>
             )}
             {tipo === "despacho" && (
               <div className="space-y-2">
                 <Label className="label-upper text-xs">Despachador</Label>
-                <Select value={despId} onValueChange={setDespId}>
+                <Select value={despId} onValueChange={setDespId} disabled={pedidoCerrado}>
                   <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Sin asignar</SelectItem>
@@ -1257,41 +1534,168 @@ function PedidoDetalleModal({
             )}
             <div className="space-y-2">
               <Label className="label-upper text-xs">Notas</Label>
-              <Textarea value={notas} onChange={(e) => setNotas(e.target.value)} className="bg-background" rows={3} />
+              <Textarea value={notas} onChange={(e) => setNotas(e.target.value)} className="bg-background" rows={3} disabled={pedidoCerrado} />
             </div>
-            <Button onClick={guardarCambios} disabled={saving || items.length === 0} className="w-full">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Guardar cambios
-            </Button>
+            {!pedidoCerrado && (
+              <Button onClick={guardarCambios} disabled={saving || items.length === 0} className="w-full">
+                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Guardar cambios
+              </Button>
+            )}
           </div>
         </div>
 
+        {pedidoCerrado && esTipoDespacho(pedido.tipo) && (
+          <div className="border border-border rounded-lg p-4 space-y-3 bg-card">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Despachador</p>
+                <p className="text-sm font-medium text-foreground">
+                  {despId !== "__none__"
+                    ? (despachadores.find((d) => d.id === despId)?.nombre_completo
+                      || despachadores.find((d) => d.id === despId)?.nombre
+                      || "Asignado")
+                    : "Sin asignar"}
+                </p>
+              </div>
+              {!cambiandoDespachador && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCambiandoDespachador(true)}
+                  disabled={guardandoDespachador}
+                  className="uppercase tracking-wider text-xs"
+                >
+                  <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                  Cambiar despachador
+                </Button>
+              )}
+            </div>
+            {cambiandoDespachador && (
+              <div className="space-y-2">
+                <Select
+                  value={despId}
+                  onValueChange={(v) => { void guardarDespachadorCerrado(v); }}
+                  disabled={guardandoDespachador}
+                >
+                  <SelectTrigger className="bg-background">
+                    <SelectValue placeholder="Elegí despachador" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sin asignar</SelectItem>
+                    {despachadores.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>{d.nombre_completo || d.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={guardandoDespachador}
+                    onClick={() => {
+                      setDespId(pedido.despachador_id ?? "__none__");
+                      setCambiandoDespachador(false);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Cambios de estado */}
-        <div className="border-t border-border pt-3 flex flex-wrap gap-2">
-          {meta.siguiente && (
-            <Button onClick={() => cambiarEstado(meta.siguiente!)} className="bg-primary text-primary-foreground hover:bg-primary/90 uppercase tracking-wider text-xs">
-              → {labelAccionEstado(pedido.tipo, meta.siguiente)}
-            </Button>
-          )}
-          {ESTADOS_MANUAL
-            .filter((e) => e !== estadoActual && e !== meta.siguiente)
-            .filter((e) => (pedido.tipo === "despacho" || pedido.tipo === "delivery") || e !== "en_despacho")
-            .map((e) => (
-              <Button key={e} variant="outline" size="sm" className="text-xs uppercase tracking-wider" onClick={() => cambiarEstado(e)}>
-                {labelAccionEstado(pedido.tipo, e)}
+        <div className="border-t border-border pt-3 flex flex-wrap gap-2 items-center">
+          {pedidoCerrado ? (
+            <div className={`text-sm font-medium px-3 py-2 rounded-md border w-full text-center ${
+              estadoActual === "entregado"
+                ? "bg-success/10 border-success/30 text-success"
+                : "bg-muted border-border text-muted-foreground"
+            }`}>
+              {estadoActual === "entregado"
+                ? "✅ Pedido entregado — no se puede modificar"
+                : "❌ Pedido cancelado — no se puede modificar"}
+            </div>
+          ) : (
+            <>
+              {meta.siguiente && meta.siguiente !== "entregado" && (
+                <Button onClick={() => cambiarEstado(meta.siguiente!)} className="bg-primary text-primary-foreground hover:bg-primary/90 uppercase tracking-wider text-xs">
+                  → {labelAccionEstado(pedido.tipo, meta.siguiente)}
+                </Button>
+              )}
+              {meta.siguiente === "entregado" && (
+                pedido.pago_registrado ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge
+                      className="text-[10px] px-2 py-1 font-bold border bg-success/15 text-success border-success/40"
+                      variant="outline"
+                    >
+                      ✅ Pagado
+                    </Badge>
+                    <Button
+                      onClick={() => cambiarEstado("entregado")}
+                      className="bg-primary text-primary-foreground hover:bg-primary/90 uppercase tracking-wider text-xs"
+                    >
+                      → Marcar entregado
+                    </Button>
+                  </div>
+                ) : (
+                  <Button onClick={() => cambiarEstado("entregado")} className="bg-primary text-primary-foreground hover:bg-primary/90 uppercase tracking-wider text-xs">
+                    → {labelAccionEstado(pedido.tipo, "entregado")}
+                  </Button>
+                )
+              )}
+              {ESTADOS_MANUAL
+                .filter((e) => e !== estadoActual && e !== meta.siguiente)
+                .filter((e) => (pedido.tipo === "despacho" || pedido.tipo === "delivery") || e !== "en_despacho")
+                .map((e) => {
+                  if (e === "entregado" && pedido.pago_registrado) {
+                    return (
+                      <div key={e} className="flex items-center gap-2">
+                        <Badge
+                          className="text-[10px] px-2 py-1 font-bold border bg-success/15 text-success border-success/40"
+                          variant="outline"
+                        >
+                          ✅ Pagado
+                        </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs uppercase tracking-wider"
+                          onClick={() => cambiarEstado("entregado")}
+                        >
+                          Marcar entregado
+                        </Button>
+                      </div>
+                    );
+                  }
+                  return (
+                    <Button
+                      key={e}
+                      variant="outline"
+                      size="sm"
+                      className="text-xs uppercase tracking-wider"
+                      onClick={() => cambiarEstado(e)}
+                    >
+                      {labelAccionEstado(pedido.tipo, e)}
+                    </Button>
+                  );
+                })}
+              <Button
+                variant="outline"
+                className="ml-auto border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive uppercase tracking-wider text-xs"
+                onClick={() => setCancelarOpen((v) => !v)}
+              >
+                <X className="h-3 w-3 mr-1" /> Cancelar pedido
               </Button>
-            ))}
-          {pedido.estado !== "cancelado" && (
-            <Button
-              variant="outline"
-              className="ml-auto border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive uppercase tracking-wider text-xs"
-              onClick={() => setCancelarOpen((v) => !v)}
-            >
-              <X className="h-3 w-3 mr-1" /> Cancelar pedido
-            </Button>
+            </>
           )}
         </div>
 
-        {cancelarOpen && pedido.estado !== "cancelado" && (
+        {!pedidoCerrado && cancelarOpen && (
           <div className="border border-destructive/40 bg-destructive/5 rounded-md p-3 space-y-2">
             <Label className="label-upper text-xs text-destructive">¿Por qué se cancela?</Label>
             <Textarea
@@ -1376,7 +1780,15 @@ function PedidoDetalleModal({
         </Dialog>
 
         {/* Modal de confirmación de pago */}
-        <Dialog open={pagoOpen} onOpenChange={(o) => { if (!pagoSaving) { setPagoOpen(o); if (!o) { setPasoEntrega("jarros"); setEntregoJarros(null); setJarrosRealesInput("0"); } } }}>
+        <Dialog
+          open={pagoOpen && !pedido.pago_registrado}
+          onOpenChange={(o) => {
+            if (!pagoSaving) {
+              setPagoOpen(o);
+              if (!o) { setPasoEntrega("jarros"); setEntregoJarros(null); setJarrosRealesInput("0"); }
+            }
+          }}
+        >
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>
@@ -1398,6 +1810,61 @@ function PedidoDetalleModal({
                 </div>
                 {esEntregaGratuita && (
                   <div className="text-sm text-primary font-semibold mt-2">🎁 Cubierto por descuento de jarros</div>
+                )}
+              </div>
+              )}
+
+              {pasoEntrega === "pago" && sinJarrosDeclarados && (
+              <div className="space-y-3 border border-primary/30 bg-primary/5 rounded-lg p-4">
+                <div className="text-center space-y-1">
+                  <div className="text-sm font-bold uppercase tracking-wider text-primary">
+                    🫙 ¿El cliente entrega jarros retornables?
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    4 jarros = 1 trago gratis · Sobrantes = $1.000 c/u
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Cantidad de jarros</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={jarrosRealesInput}
+                      onChange={(e) => onJarrosRealesChange(e.target.value)}
+                      className="bg-background font-mono text-xl h-12 w-24 text-center"
+                      disabled={pagoSaving}
+                    />
+                    <span className="text-sm text-muted-foreground">jarros</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">(Dejar en 0 si no entrega)</p>
+                </div>
+                {jarrosAlEntregarInput > 0 && (
+                  <div className="rounded-md bg-background border border-border p-3 text-sm text-center space-y-1">
+                    {descuentoAlEntregarCalc.tragosGratis > 0 && (
+                      <p>
+                        {jarrosAlEntregarInput} jarros → {descuentoAlEntregarCalc.tragosGratis} trago
+                        {descuentoAlEntregarCalc.tragosGratis !== 1 ? "s" : ""} gratis
+                        (−{fmtCLP(descuentoAlEntregarCalc.descuentoTragos)})
+                      </p>
+                    )}
+                    {descuentoAlEntregarCalc.sobrantes > 0 && (
+                      <p>
+                        {descuentoAlEntregarCalc.sobrantes} sobrante
+                        {descuentoAlEntregarCalc.sobrantes !== 1 ? "s" : ""}
+                        (−{fmtCLP(descuentoAlEntregarCalc.descuentoSobrantes)})
+                      </p>
+                    )}
+                    {descuentoAlEntregarPreview > 0 && (
+                      <p className="text-muted-foreground">
+                        Descuento: −{fmtCLP(descuentoAlEntregarPreview)}
+                      </p>
+                    )}
+                    <p className="font-semibold text-primary pt-1">
+                      Total: {fmtCLP(totalAlEntregarPreview)}
+                    </p>
+                  </div>
                 )}
               </div>
               )}
@@ -1609,5 +2076,30 @@ function PedidoDetalleModal({
         </Dialog>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={alertaSinDespachador} onOpenChange={setAlertaSinDespachador}>
+      <AlertDialogContent className="bg-card border-border">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="font-display text-xl">⚠️ Sin despachador</AlertDialogTitle>
+          <AlertDialogDescription className="text-sm text-muted-foreground space-y-2">
+            <span className="block">Este pedido no tiene despachador asignado.</span>
+            <span className="block">¿Deseas continuar sin asignar uno?</span>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="gap-2">
+          <AlertDialogCancel>Volver a asignar</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-warning text-warning-foreground hover:bg-warning/90"
+            onClick={() => {
+              setAlertaSinDespachador(false);
+              void iniciarFlujoEntrega();
+            }}
+          >
+            Continuar sin despachador
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

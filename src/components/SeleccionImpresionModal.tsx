@@ -4,9 +4,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { type ComandaItem } from "@/lib/printComanda";
+import { type ComandaItem, normalizarTipoComanda } from "@/lib/printComanda";
 import { buildComandaCocinaItems, comandaItemFromPedidoItem } from "@/lib/pedidoImpresion";
-import type { ComandaCocinaTipo } from "@/lib/printComanda";
 import { reimprimirCocina, reimprimirToma } from "@/services/printer";
 
 interface Pedido {
@@ -26,6 +25,8 @@ interface Pedido {
   referencia_entrega: string | null;
   despachador_id: string | null;
   notas: string | null;
+  jarros_prometidos?: number | null;
+  promo_tipo?: string | null;
 }
 
 interface Despachador {
@@ -99,7 +100,7 @@ export default function SeleccionImpresionModal({
     ];
 
     const desp = despachadores.find((d) => d.id === pedido.despachador_id);
-    const tipoComanda = (pedido.tipo === "despacho" || pedido.tipo === "delivery") ? "despacho" : "retiro";
+    const tipoComanda = normalizarTipoComanda(pedido.tipo);
 
     try {
       if (tipo === "toma" || tipo === "ambas") {
@@ -121,6 +122,7 @@ export default function SeleccionImpresionModal({
           metodoPago: pedido.metodo_pago,
           pagoRegistrado: pedido.pago_registrado ?? false,
           montoRecibido: pedido.monto_recibido,
+          promoLabel: pedido.promo_tipo === "trabajador" ? "PRECIO TRABAJADOR" : null,
           editado,
         });
       }
@@ -129,7 +131,7 @@ export default function SeleccionImpresionModal({
         await reimprimirCocina({
           numero: pedido.numero_pedido,
           sucursalNombre,
-          tipo: (pedido.tipo || "local") as ComandaCocinaTipo,
+          tipo: tipoComanda,
           cliente: pedido.cliente_nombre,
           telefono: pedido.cliente_telefono,
           direccion: pedido.direccion_entrega,
@@ -137,6 +139,11 @@ export default function SeleccionImpresionModal({
           items: buildComandaCocinaItems(itemsConCancelados),
           notas: pedido.notas,
           editado,
+          total: pedido.total,
+          subtotal: pedido.subtotal,
+          descuentoJarros: (pedido.jarros_prometidos ?? 0) > 0 ? (pedido.descuento ?? 0) : 0,
+          metodoPago: pedido.metodo_pago,
+          pagoRegistrado: pedido.pago_registrado ?? false,
         });
       }
     } catch (e) {

@@ -5,7 +5,8 @@ export type TipoPromo =
   | "jarra_dorada"
   | "cumpleanos"
   | "cupon"
-  | "canje";
+  | "canje"
+  | "trabajador";
 
 export interface PedidoPromoFields {
   descuento?: number | null;
@@ -23,6 +24,7 @@ const PROMO_TIPO_LABEL: Record<string, string> = {
   cumpleanos: "Cumpleaños",
   cupon: "Cupón",
   canje: "Canje",
+  trabajador: "Trabajador",
 };
 
 const fmtCLP = (n: number) =>
@@ -33,7 +35,11 @@ const fmtCLP = (n: number) =>
   }).format(n);
 
 export function tienePromo(pedido: PedidoPromoFields): boolean {
-  return (pedido.descuento ?? 0) > 0;
+  return (pedido.descuento ?? 0) > 0 || pedido.promo_tipo === "trabajador";
+}
+
+export function esPedidoTrabajador(pedido: PedidoPromoFields): boolean {
+  return pedido.promo_tipo === "trabajador";
 }
 
 export function labelPromoTipo(
@@ -55,6 +61,21 @@ export function PromoPedidoBadge({
   className?: string;
   compact?: boolean;
 }) {
+  if (esPedidoTrabajador(pedido)) {
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center gap-1 font-bold uppercase tracking-wider border rounded-full",
+          compact ? "text-[9px] px-1.5 py-0.5" : "text-[10px] px-2 py-0.5",
+          className,
+        )}
+        style={{ backgroundColor: "#7FFF00", color: "#1a4d1a", borderColor: "#5cb800" }}
+      >
+        👷 TRABAJADOR
+      </span>
+    );
+  }
+
   if (!tienePromo(pedido)) return null;
   const tipoLabel = labelPromoTipo(pedido.promo_tipo, pedido.cupon_id);
 
@@ -110,7 +131,7 @@ export function DesglosePrecioPedido({
     <div className={cn("space-y-1 text-sm", className)}>
       {tipoLabel && (
         <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "#1a4d1a" }}>
-          Promo: {tipoLabel}
+          {pedido.promo_tipo === "trabajador" ? "👷 Precio trabajador" : `Promo: ${tipoLabel}`}
         </div>
       )}
       <div className="flex justify-between">

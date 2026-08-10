@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import {
   cajasUnidadesAMl,
@@ -11,13 +11,23 @@ import {
 
 export interface InputCajasUnidadesProps {
   insumo: InsumoStockFields | null | undefined;
-  valorMl: number;
+  /** null/undefined = campo vacío (aún no contado). 0 es un valor válido. */
+  valorMl: number | null | undefined;
   onChange: (nuevoValorMl: number) => void;
   disabled?: boolean;
   compact?: boolean;
   className?: string;
   /** Mostrar preview del total ML/GR debajo de los inputs. */
   mostrarTotal?: boolean;
+}
+
+/** Parsea entero ≥ 0. Vacío → null (inválido/pendiente). 0 es válido. */
+function parseCantidadNoNegativa(raw: string): number | null {
+  const t = raw.trim();
+  if (t === "") return null;
+  const n = Number(t);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.floor(n);
 }
 
 export default function InputCajasUnidades({
@@ -34,28 +44,55 @@ export default function InputCajasUnidades({
   const ml = insumo?.ml_por_unidad ?? null;
   const unidad = insumo?.unidad || "unidades";
 
-  const [cajas, setCajas] = useState(0);
-  const [unidades, setUnidades] = useState(0);
-  const [raw, setRaw] = useState(0);
+  const [cajas, setCajas] = useState("");
+  const [unidades, setUnidades] = useState("");
+  const [raw, setRaw] = useState("");
+  /** Evita renormalizar cajas/unidades con % upf tras un onChange propio (permite 0 cajas + 12 u). */
+  const lastEmittedMl = useRef<number | null>(null);
 
   useEffect(() => {
+    if (valorMl === null || valorMl === undefined) {
+      lastEmittedMl.current = null;
+      setCajas("");
+      setUnidades("");
+      setRaw("");
+      return;
+    }
+    // Si el valor viene de nuestro propio emit, no rearmar con módulo
+    if (lastEmittedMl.current !== null && lastEmittedMl.current === valorMl) {
+      return;
+    }
+    lastEmittedMl.current = null;
     if (dual) {
       const { cajas: c, unidades: u } = mlACajasUnidades(valorMl, upf, ml);
-      setCajas(c);
-      setUnidades(u);
+      setCajas(String(c));
+      setUnidades(String(u));
     } else {
       const { unidades: u } = mlACajasUnidades(valorMl, upf, ml);
-      setRaw(u);
+      setRaw(String(u));
     }
   }, [valorMl, upf, ml, dual]);
 
   const hSize = compact ? "h-8" : "h-10";
   const wSize = compact ? "w-16" : "w-20";
   const info = textoInfoFormato(insumo);
-  const totalPreview = valorMl > 0 ? calcStockColumnas(valorMl, insumo).total : null;
+  const totalPreview =
+    valorMl !== null && valorMl !== undefined && valorMl >= 0
+      ? calcStockColumnas(valorMl, insumo).total
+      : null;
 
-  const emitDual = (c: number, u: number) => {
-    onChange(cajasUnidadesAMl(c, u, upf, ml));
+  const emitDual = (cStr: string, uStr: string) => {
+    const c = parseCantidadNoNegativa(cStr);
+    const u = parseCantidadNoNegativa(uStr);
+    // Ambos vacíos → aún no hay conteo; no emitir
+    if (c === null && u === null) return;
+    // Uno vacío se interpreta como 0 para poder guardar "0 cajas + 0 unidades"
+    const cajasN = c ?? 0;
+    const unidadesN = u ?? 0;
+    // Sin tope: unidades puede ser ≥ unidades_por_formato
+    const nuevoMl = cajasUnidadesAMl(cajasN, unidadesN, upf, ml);
+    lastEmittedMl.current = nuevoMl;
+    onChange(nuevoMl);
   };
 
   if (!dual) {
@@ -70,9 +107,13 @@ export default function InputCajasUnidades({
             disabled={disabled}
             value={raw}
             onChange={(e) => {
-              const v = Math.max(0, parseInt(e.target.value, 10) || 0);
-              setRaw(v);
-              onChange(ml ? v * (ml || 1) : v);
+              const next = e.target.value;
+              setRaw(next);
+              const v = parseCantidadNoNegativa(next);
+              if (v === null) return;
+              const nuevoMl = ml ? v * (ml || 1) : v;
+              lastEmittedMl.current = nuevoMl;
+              onChange(nuevoMl);
             }}
             className={`bg-background font-mono text-right ${hSize} ${wSize}`}
             placeholder="0"
@@ -103,9 +144,9 @@ export default function InputCajasUnidades({
             disabled={disabled}
             value={cajas}
             onChange={(e) => {
-              const v = Math.max(0, parseInt(e.target.value, 10) || 0);
-              setCajas(v);
-              emitDual(v, unidades);
+              const next = e.target.value;
+              setCajas(next);
+              emitDual(next, unidades);
             }}
             className={`bg-background font-mono text-right ${hSize} ${wSize}`}
             placeholder="0"
@@ -121,9 +162,9 @@ export default function InputCajasUnidades({
             disabled={disabled}
             value={unidades}
             onChange={(e) => {
-              const v = Math.max(0, parseInt(e.target.value, 10) || 0);
-              setUnidades(v);
-              emitDual(cajas, v);
+              const next = e.target.value;
+              setUnidades(next);
+              emitDual(cajas, next);
             }}
             className={`bg-background font-mono text-right ${hSize} ${wSize}`}
             placeholder="0"

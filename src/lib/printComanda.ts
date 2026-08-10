@@ -2,6 +2,26 @@ export function formatSaborExtra(nombre: string): string {
   return nombre.replace(/^Pulpa de /i, "");
 }
 
+export type ComandaCocinaTipo = "despacho" | "retiro" | "local" | "delivery" | "uber" | "rappi" | "puerta";
+
+/** Normaliza aliases (delivery→despacho, local→retiro) y tipos externos. */
+export function normalizarTipoComanda(tipo: string | null | undefined): ComandaCocinaTipo {
+  switch (tipo) {
+    case "delivery":
+      return "despacho";
+    case "local":
+      return "retiro";
+    case "despacho":
+    case "retiro":
+    case "uber":
+    case "rappi":
+    case "puerta":
+      return tipo;
+    default:
+      return "retiro";
+  }
+}
+
 export interface ComandaItem {
   cantidad: number;
   nombre: string;
@@ -18,7 +38,7 @@ export interface ComandaItem {
 export interface ComandaData {
   numero: number | string;
   sucursalNombre: string;
-  tipo: "despacho" | "retiro";
+  tipo: ComandaCocinaTipo;
   cliente: string;
   telefono?: string | null;
   direccion?: string | null;
@@ -121,9 +141,6 @@ function bloquePagoComandaToma(d: ComandaData): string[] {
   const out: string[] = [SUB];
   if (d.pagoRegistrado) {
     out.push(`OK PAGADO: ${metodo}`);
-    const recibido = d.montoRecibido ?? d.total;
-    out.push(`  Recibido: ${fmtPrecio(recibido)}`);
-    out.push(`  Vuelto: ${fmtPrecio(Math.max(0, recibido - d.total))}`);
   } else {
     out.push(`PAGO ESPERADO: ${metodo}`);
   }
@@ -134,12 +151,8 @@ function bloquePagoComandaHtml(d: ComandaData): string {
   const metodo = labelMetodoPago(d.metodoPago);
   if (!metodo) return "";
   if (d.pagoRegistrado) {
-    const recibido = d.montoRecibido ?? d.total;
-    const vuelto = Math.max(0, recibido - d.total);
     return `<pre>${SUB}
 ✓ PAGADO: ${escapeHtml(metodo)}
-  Recibido: ${escapeHtml(fmtPrecio(recibido))}
-  Vuelto: ${escapeHtml(fmtPrecio(vuelto))}
 ${SUB}</pre>`;
   }
   return `<pre>${SUB}
@@ -275,35 +288,54 @@ function lineasNotasClienteItem(it: ComandaItem, prefijo = "  Nota: ", prefijoCo
   return lineaNotaItem(it.notas.trim(), cocina ? prefijoCocina : prefijo, width);
 }
 
-function tipoLabelTexto(tipo: "despacho" | "retiro") {
-  return tipo === "despacho" ? "*** DESPACHO ***" : "*** RETIRO ***";
-}
-
-export type ComandaCocinaTipo = "despacho" | "retiro" | "local" | "delivery" | "uber" | "rappi" | "puerta";
-
-function cocinaEncabezadoTipo(tipo: ComandaCocinaTipo | string): string {
-  switch (tipo) {
+function tipoLabelTexto(tipo: ComandaCocinaTipo | string): string {
+  // ESC/POS: sin emoji (toAscii los elimina). Uber/Rappi con brackets para que destaquen.
+  switch (normalizarTipoComanda(tipo)) {
     case "despacho":
     case "delivery":
-      return "DESPACHO";
+      return "*** DESPACHO ***";
     case "uber":
-      return "UBER EATS";
+      return "[UBER EATS]";
     case "rappi":
-      return "RAPPI";
+      return "[RAPPI]";
     case "puerta":
+      return "*** PUERTA ***";
     case "retiro":
     case "local":
     default:
-      return "RETIRO";
+      return "*** RETIRO ***";
   }
 }
 
+function tipoLabelHtml(tipo: ComandaCocinaTipo | string): string {
+  switch (normalizarTipoComanda(tipo)) {
+    case "despacho":
+    case "delivery":
+      return "DESPACHO 🛵";
+    case "uber":
+      return "🟠 UBER EATS";
+    case "rappi":
+      return "🔴 RAPPI";
+    case "puerta":
+      return "PUERTA 🚪";
+    case "retiro":
+    case "local":
+    default:
+      return "RETIRO 🏪";
+  }
+}
+
+function cocinaEncabezadoTipo(tipo: ComandaCocinaTipo | string): string {
+  return tipoLabelTexto(tipo);
+}
+
 function cocinaEsExterno(tipo: ComandaCocinaTipo | string): boolean {
-  return tipo === "uber" || tipo === "rappi";
+  const t = normalizarTipoComanda(tipo);
+  return t === "uber" || t === "rappi";
 }
 
 function cocinaEsDespacho(tipo: ComandaCocinaTipo | string): boolean {
-  return tipo === "despacho" || tipo === "delivery";
+  return normalizarTipoComanda(tipo) === "despacho";
 }
 
 function bloqueEncabezadoCocina(d: ComandaCocinaData): { detalle: string[] } {
@@ -344,8 +376,8 @@ export function buildComandaTexto(d: ComandaData): string {
   pushSeccion(bloques, DOBLE_ALTO, lineaEtiqueta("CLIENTE", d.cliente));
 
   if (d.telefono) bloques.push(...lineaEtiqueta("TEL", d.telefono));
-  if (d.tipo === "despacho" && d.direccion) bloques.push(...lineaEtiqueta("DIR", d.direccion));
-  if (d.tipo === "despacho" && d.referencia) bloques.push(...lineaEtiqueta("REF", d.referencia));
+  if (cocinaEsDespacho(d.tipo) && d.direccion) bloques.push(...lineaEtiqueta("DIR", d.direccion));
+  if (cocinaEsDespacho(d.tipo) && d.referencia) bloques.push(...lineaEtiqueta("REF", d.referencia));
   if (d.despachador) bloques.push(...lineaEtiqueta("DESPA", d.despachador));
 
   bloques.push(SEP, "PRODUCTOS:");
@@ -404,7 +436,7 @@ export function buildComandaTexto(d: ComandaData): string {
 export function buildComandaHtml(d: ComandaData): string {
   const sep = SEP;
   const sub = SUB;
-  const tipoLabel = d.tipo === "despacho" ? "🏍️  DESPACHO  🏍️" : "🏪  RETIRO  🏪";
+  const tipoLabel = tipoLabelHtml(d.tipo);
 
   const lineasItems: string[] = [];
   for (const it of d.items) {
@@ -454,7 +486,7 @@ export function buildComandaHtml(d: ComandaData): string {
 <div class="center tipo">${tipoLabel}</div>
 <pre>${sep}
 CLIENTE: ${escapeHtml(d.cliente)}
-${d.telefono ? "TEL: " + escapeHtml(d.telefono) + "\n" : ""}${d.tipo === "despacho" && d.direccion ? "DIR: " + escapeHtml(d.direccion) + "\n" : ""}${d.tipo === "despacho" && d.referencia ? "REF: " + escapeHtml(d.referencia) + "\n" : ""}${d.tomador ? "TOMA: " + escapeHtml(d.tomador) + "\n" : ""}${d.despachador ? "DESPA: " + escapeHtml(d.despachador) + "\n" : ""}${sep}
+${d.telefono ? "TEL: " + escapeHtml(d.telefono) + "\n" : ""}${cocinaEsDespacho(d.tipo) && d.direccion ? "DIR: " + escapeHtml(d.direccion) + "\n" : ""}${cocinaEsDespacho(d.tipo) && d.referencia ? "REF: " + escapeHtml(d.referencia) + "\n" : ""}${d.tomador ? "TOMA: " + escapeHtml(d.tomador) + "\n" : ""}${d.despachador ? "DESPA: " + escapeHtml(d.despachador) + "\n" : ""}${sep}
 PRODUCTOS:
 ${lineasItems.map(escapeHtml).join("\n")}
 ${sub}
@@ -490,6 +522,38 @@ export interface ComandaCocinaData {
   items: { cantidad: number; nombre: string; extras?: { nombre: string }[]; notas?: string; esRegalo?: boolean; esPromoJarros?: boolean; notaPromo?: string; marker?: "nuevo" | "cancelado" }[];
   notas?: string | null;
   editado?: boolean;
+  /** Total a cobrar (omitido en Uber/Rappi). */
+  total?: number | null;
+  subtotal?: number | null;
+  /** Descuento por jarros retornables; si > 0 se muestra el desglose. */
+  descuentoJarros?: number | null;
+  metodoPago?: string | null;
+  pagoRegistrado?: boolean | null;
+}
+
+/** Bloque TOTAL / pago para comanda cocina (ASCII, 42 cols). No usar en Uber/Rappi. */
+function bloquePagoCocina(d: ComandaCocinaData): string[] {
+  if (cocinaEsExterno(d.tipo)) return [];
+  if (d.total == null || !Number.isFinite(Number(d.total))) return [];
+
+  const total = Number(d.total);
+  const subtotal = d.subtotal != null && Number.isFinite(Number(d.subtotal)) ? Number(d.subtotal) : null;
+  const descJarros = d.descuentoJarros != null && Number(d.descuentoJarros) > 0 ? Number(d.descuentoJarros) : 0;
+  const metodo = labelMetodoPago(d.metodoPago);
+
+  const out: string[] = [SEP];
+  if (descJarros > 0 && subtotal != null) {
+    out.push(alinearDerecha("SUBTOTAL:", fmtPrecio(subtotal)));
+    out.push(alinearDerecha("DESCUENTO JARROS:", fmtPrecio(-descJarros)));
+  }
+  out.push(alinearDerecha("TOTAL:", fmtPrecio(total)));
+  if (d.pagoRegistrado) {
+    out.push(toAscii(metodo ? `YA PAGADO - ${metodo}` : "YA PAGADO"));
+  } else {
+    out.push(toAscii(`PAGO: ${metodo ?? "POR DEFINIR"}`));
+  }
+  out.push(SEP);
+  return out;
 }
 
 export function buildComandaCocinaTexto(d: ComandaCocinaData): string {
@@ -525,6 +589,8 @@ export function buildComandaCocinaTexto(d: ComandaCocinaData): string {
     bloques.push(SUB);
   }
 
+  bloques.push(...bloquePagoCocina(d));
+
   bloques.push(SEP, ...lineaEtiqueta("CLIENTE", d.cliente));
   if (d.notas) bloques.push(...lineaEtiqueta("NOTA", d.notas));
   bloques.push(SEP, centrar(fechaHoraAscii()), SEP);
@@ -536,7 +602,7 @@ export function buildComandaCocinaHtml(d: ComandaCocinaData): string {
   const sep = SEP;
   const sub = SUB;
   const suf = d.editado ? " (MOD.)" : "";
-  const tipoLabel = cocinaEncabezadoTipo(d.tipo);
+  const tipoLabel = tipoLabelHtml(d.tipo);
   const contacto: string[] = [];
   if (!cocinaEsExterno(d.tipo)) {
     if (d.telefono?.trim()) contacto.push(`TEL: ${escapeHtml(d.telefono.trim())}`);
@@ -577,6 +643,7 @@ export function buildComandaCocinaHtml(d: ComandaCocinaData): string {
 ${contacto.map(escapeHtml).join("\n")}
 ${sep}</pre>
 <pre>${lineas.map(escapeHtml).join("\n")}</pre>
+${bloquePagoCocina(d).map((l) => `<pre>${escapeHtml(l)}</pre>`).join("\n")}
 <pre>${sep}</pre>
 <div class="cli">Cliente: ${escapeHtml(d.cliente)}</div>
 ${d.notas ? `<div class="nota">Nota: ${escapeHtml(d.notas)}</div>` : ""}

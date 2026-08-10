@@ -60,6 +60,7 @@ interface DespRow {
   nombre: string;
   entregados: number;
   cobrado: number;
+  manuales: number;
   pagado: boolean;
 }
 
@@ -81,7 +82,11 @@ interface InvRow {
 
 interface PagoTurno { id: string; monto: number; metodo: string; referencia: string | null; pedido_id: string | null }
 interface GastoLite { monto: number; metodo: string | null; concepto: string }
-interface PagoDesp { total_a_pagar: number }
+interface PagoDesp {
+  total_a_pagar: number;
+  despachador_id?: string;
+  nombre: string;
+}
 interface PrestamoDesp { id: string; despachador_id: string; monto: number; devuelto: boolean }
 
 type SectionKey = "despachadores" | "inventario" | "caja";
@@ -109,6 +114,7 @@ export default function CierreTurnoModal({
   // Step 2
   const [inv, setInv] = useState<InvRow[]>([]);
   const [inventarioGuardado, setInventarioGuardado] = useState(false);
+  const [guardandoProgreso, setGuardandoProgreso] = useState(false);
   const [creandoReposicion, setCreandoReposicion] = useState(false);
   const [reposicionCreada, setReposicionCreada] = useState(false);
 
@@ -121,6 +127,7 @@ export default function CierreTurnoModal({
   const [efectivoDeclaradoSobre, setEfectivoDeclaradoSobre] = useState("");
   const [observacion, setObservacion] = useState("");
   const [verTransfer, setVerTransfer] = useState(false);
+  const [confirmCierreSinPago, setConfirmCierreSinPago] = useState(false);
 
   // Incrementa cada vez que el modal abre para forzar remount de Step2,
   // garantizando que los defaultValue de los inputs se reseteen correctamente.
@@ -133,6 +140,7 @@ export default function CierreTurnoModal({
     setObservacion("");
     setInventarioGuardado(false);
     setReposicionCreada(false);
+    setConfirmCierreSinPago(false);
     setOpenSection("despachadores");
     setInvKey((k) => k + 1);
     setPedidosPendientes([]);
@@ -175,22 +183,28 @@ export default function CierreTurnoModal({
   const cargarTodo = async () => {
     setLoading(true);
     try {
-      const [tdRes, peRes, insRes, stRes, pgRes, gaRes, pdRes, suRes, prRes] = await Promise.all([
+      const [tdRes, peRes, insRes, stRes, pgRes, gaRes, pdRes, suRes, prRes, manRes, icRes] = await Promise.all([
         supabase.from("turno_despachadores").select("*").eq("turno_id", turno.id),
         supabase.from("pedidos").select("despachador_id,estado,costo_despacho").eq("turno_id", turno.id),
         supabase.from("insumos").select("id,nombre,unidad,tipo,formato_mayor,unidades_por_formato,ml_por_unidad").eq("activo", true).order("nombre"),
         supabase.from("stock_sucursal").select("insumo_id,cantidad,stock_minimo").eq("sucursal_id", turno.sucursal_id),
         supabase.from("pagos_turno").select("id,monto,metodo,referencia,pedido_id").eq("turno_id", turno.id),
         supabase.from("gastos_turno").select("monto,metodo,concepto").eq("turno_id", turno.id),
-        supabase.from("pago_despachadores").select("total_a_pagar").eq("turno_id", turno.id).eq("pagado", true),
+        supabase.from("pago_despachadores")
+          .select("total_a_pagar, despachador_id, usuarios:despachador_id(nombre, nombre_completo)")
+          .eq("turno_id", turno.id)
+          .eq("pagado", true),
         supabase.from("sucursales").select("nombre").eq("id", turno.sucursal_id).maybeSingle(),
         supabase.from("prestamos_despachador").select("id,despachador_id,monto,devuelto").eq("turno_id", turno.id),
+        supabase.from("despachos_manuales").select("despachador_id,monto").eq("turno_id", turno.id),
+        supabase.from("inventario_cierre").select("insumo_id, cantidad_real").eq("turno_id", turno.id),
       ]);
 
       setSucursalNombre(((suRes.data as { nombre?: string } | null)?.nombre) ?? "");
 
       const tdRows = (tdRes.data as TD[]) ?? [];
       const pedidos = (peRes.data as PedidoLite[]) ?? [];
+      const manualesRows = (manRes.data as { despachador_id: string; monto: number }[]) ?? [];
       const ids = tdRows.map((r) => r.despachador_id);
       let usuarios: Usuario[] = [];
       if (ids.length) {
@@ -204,19 +218,28 @@ export default function CierreTurnoModal({
         const propios = pedidos.filter((p) => p.despachador_id === td.despachador_id);
         const entregados = propios.filter((p) => p.estado === "entregado");
         const cobrado = entregados.reduce((acc, p) => acc + (p.costo_despacho ?? 0), 0);
+        const manuales = manualesRows
+          .filter((m) => m.despachador_id === td.despachador_id)
+          .reduce((acc, m) => acc + m.monto, 0);
         return {
           td,
           nombre: u ? (u.nombre_completo || u.nombre) : "Despachador",
           entregados: entregados.length,
           cobrado,
+          manuales,
           pagado: !!td.pagado,
         };
       }));
 
       const insumos = (insRes.data as (Insumo & { formato_mayor: string | null; unidades_por_formato: number | null; ml_por_unidad: number | null })[]) ?? [];
       const stock = (stRes.data as StockRow[]) ?? [];
+      const guardados = (icRes.data as { insumo_id: string; cantidad_real: number | null }[]) ?? [];
+      const guardadosByInsumo = new Map(guardados.map((g) => [g.insumo_id, g]));
       setInv(insumos.map((i) => {
         const s = stock.find((x) => x.insumo_id === i.id);
+        const g = guardadosByInsumo.get(i.id);
+        const cantidadGuardada = g?.cantidad_real;
+        const contado = cantidadGuardada != null;
         return {
           insumo_id: i.id,
           nombre: i.nombre,
@@ -227,14 +250,23 @@ export default function CierreTurnoModal({
           formato_mayor: i.formato_mayor ?? null,
           unidades_por_formato: i.unidades_por_formato != null ? Number(i.unidades_por_formato) : null,
           ml_por_unidad: i.ml_por_unidad != null ? Number(i.ml_por_unidad) : null,
-          cantidadReal: 0,
-          contado: false,
+          cantidadReal: contado ? Number(cantidadGuardada) : 0,
+          contado,
         };
       }));
 
       setPagos((pgRes.data as PagoTurno[]) ?? []);
       setGastos((gaRes.data as GastoLite[]) ?? []);
-      setPagosDesp((pdRes.data as PagoDesp[]) ?? []);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pagosDespRows = ((pdRes.data as any[]) ?? []).map((p) => ({
+        total_a_pagar: Number(p.total_a_pagar) || 0,
+        despachador_id: p.despachador_id as string | undefined,
+        nombre:
+          p.usuarios?.nombre_completo ||
+          p.usuarios?.nombre ||
+          "Despachador",
+      }));
+      setPagosDesp(pagosDespRows);
       setPrestamos((prRes.data as PrestamoDesp[]) ?? []);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Error cargando cierre");
@@ -244,9 +276,12 @@ export default function CierreTurnoModal({
   };
 
   // ----- Step 1 -----
-  const onDespPagado = (id: string, total: number) => {
+  const onDespPagado = (id: string, total: number, nombre: string, despachadorId: string) => {
     setDesps((prev) => prev.map((d) => d.td.id === id ? { ...d, pagado: true } : d));
-    setPagosDesp((prev) => [...prev, { total_a_pagar: total }]);
+    setPagosDesp((prev) => {
+      const sinEste = prev.filter((p) => p.despachador_id !== despachadorId);
+      return [...sinEste, { total_a_pagar: total, nombre, despachador_id: despachadorId }];
+    });
   };
 
   const todosPagados = desps.every((d) => d.pagado);
@@ -257,9 +292,19 @@ export default function CierreTurnoModal({
     if (inventarioGuardado) setInventarioGuardado(false);
     if (reposicionCreada) setReposicionCreada(false);
   };
-  const calcReal = (r: InvRow) => r.cantidadReal;
-  const conteoTexto = (r: InvRow) => formatearStockDisplay(r.cantidadReal, r) ?? "0";
+  const calcReal = (r: InvRow) => {
+    // 0 es válido (sin stock); solo contado=false significa “aún no ingresado”
+    const n = Number(r.cantidadReal);
+    if (!Number.isFinite(n) || n < 0) return 0;
+    return n;
+  };
+  const conteoTexto = (r: InvRow) => {
+    const n = calcReal(r);
+    if (n === 0) return "0";
+    return formatearStockDisplay(n, r) ?? "0";
+  };
   const todosInventariados = inv.length > 0 && inv.every((r) => r.contado);
+  const contadosCount = inv.filter((r) => r.contado).length;
 
   const insumosCriticos = useMemo(() => {
     if (!inventarioGuardado) return [];
@@ -284,6 +329,22 @@ export default function CierreTurnoModal({
       .from("inventario_cierre")
       .upsert(rows, { onConflict: "turno_id,insumo_id" });
     if (error) throw error;
+  };
+
+  const guardarProgreso = async () => {
+    if (contadosCount === 0) {
+      toast.error("Contá al menos un insumo antes de guardar progreso");
+      return;
+    }
+    setGuardandoProgreso(true);
+    try {
+      await guardarInventario();
+      toast.success(`✅ Progreso guardado — ${contadosCount} insumos contados`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Error guardando progreso");
+    } finally {
+      setGuardandoProgreso(false);
+    }
   };
 
   const guardarYRevisar = async () => {
@@ -338,7 +399,7 @@ export default function CierreTurnoModal({
   const totalGastosEfectivo = gastos
     .filter((g) => g.metodo === "efectivo" && !esIngresoCaja(g.concepto))
     .reduce((a, g) => a + g.monto, 0);
-  const totalPagoDesp = pagosDesp.reduce((a, p) => a + p.total_a_pagar, 0);
+  const totalPagoDesp = pagosDesp.reduce((a, p) => a + (p.total_a_pagar > 0 ? p.total_a_pagar : 0), 0);
   const cajaChicaInicial = turno.caja_chica_apertura;
   const efectivoGanancias = totalEfectivoVentas - totalGastosEfectivo - totalPagoDesp;
   const cajaChicaFinal = efectivoGanancias >= 0 ? cajaChicaInicial : cajaChicaInicial + efectivoGanancias;
@@ -351,6 +412,22 @@ export default function CierreTurnoModal({
       .select("id,despachador_id,monto,devuelto")
       .eq("turno_id", turno.id);
     setPrestamos((data as PrestamoDesp[]) ?? []);
+  };
+
+  const recargarManualesDesps = async () => {
+    const { data } = await supabase
+      .from("despachos_manuales")
+      .select("despachador_id,monto")
+      .eq("turno_id", turno.id);
+    const rows = (data as { despachador_id: string; monto: number }[]) ?? [];
+    setDesps((prev) =>
+      prev.map((d) => ({
+        ...d,
+        manuales: rows
+          .filter((m) => m.despachador_id === d.td.despachador_id)
+          .reduce((acc, m) => acc + m.monto, 0),
+      })),
+    );
   };
   const cajaChicaEsperada = cajaChicaFinal;
   const sobreEsperado = efectivoGanancias > 0 ? efectivoGanancias : 0;
@@ -368,7 +445,21 @@ export default function CierreTurnoModal({
   const cuadra = declaracionCompleta && Math.abs(diferenciaTotal) <= TOLERANCIA;
   const descuadre = declaracionCompleta && Math.abs(diferenciaTotal) > TOLERANCIA;
 
+  const despachadoresSinPago = useMemo(
+    () => pagosDesp.filter((p) => !(p.total_a_pagar > 0)),
+    [pagosDesp],
+  );
+
+  const solicitarCierre = () => {
+    if (despachadoresSinPago.length > 0) {
+      setConfirmCierreSinPago(true);
+      return;
+    }
+    void cerrarTurno();
+  };
+
   const cerrarTurno = async () => {
+    setConfirmCierreSinPago(false);
     if (!puedeCerrarTurno(turno.tomador_id, perfil?.id, perfil?.rol)) {
       toast.error("Solo puede cerrar el turno quien lo abrió");
       return;
@@ -515,13 +606,31 @@ export default function CierreTurnoModal({
                     desps={desps}
                     turnoId={turno.id}
                     prestamos={prestamos}
+                    pagosDesp={pagosDesp}
                     onPrestamoChange={recargarPrestamos}
+                    onManualesChange={recargarManualesDesps}
                     onPagado={onDespPagado}
                   />
                 )}
               </SectionCard>
 
               <SectionCard isOpen={openSection === "inventario"} onToggle={() => toggleSection("inventario")} title="Inventario de cierre" icon={Package} done={inventarioCompleto}>
+                {!inventarioGuardado && inv.length > 0 && (
+                  <div className="sticky top-0 z-10 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+                    <p className="text-sm text-muted-foreground">
+                      Guardado: <span className="font-mono font-medium text-foreground">{contadosCount}/{inv.length}</span> insumos contados 💾
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={guardarProgreso}
+                      disabled={contadosCount === 0 || guardandoProgreso || saving}
+                      className="uppercase tracking-wider font-bold"
+                    >
+                      {guardandoProgreso ? <Loader2 className="h-4 w-4 animate-spin" /> : "💾 Guardar progreso"}
+                    </Button>
+                  </div>
+                )}
                 <Step2
                   key={invKey}
                   inv={inv}
@@ -536,10 +645,10 @@ export default function CierreTurnoModal({
                   <div className="flex justify-end mt-4">
                     <Button
                       onClick={guardarYRevisar}
-                      disabled={!todosInventariados || saving}
+                      disabled={!todosInventariados || saving || guardandoProgreso}
                       className="bg-primary text-primary-foreground hover:bg-primary/90 uppercase tracking-wider font-bold"
                     >
-                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar inventario"}
+                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Finalizar inventario"}
                     </Button>
                   </div>
                 )}
@@ -559,6 +668,7 @@ export default function CierreTurnoModal({
                   totalTarjeta={totalTarjeta}
                   totalGastosEfectivo={totalGastosEfectivo}
                   totalPagoDesp={totalPagoDesp}
+                  pagosDespDetalle={pagosDesp}
                   efectivoEsperado={efectivoEsperado}
                   efectivoDeclaradoCaja={efectivoDeclaradoCaja}
                   setEfectivoDeclaradoCaja={setEfectivoDeclaradoCaja}
@@ -589,7 +699,7 @@ export default function CierreTurnoModal({
               </span>
             )}
             <Button
-              onClick={cerrarTurno}
+              onClick={solicitarCierre}
               disabled={saving || !todoCompleto}
               size="lg"
               className={`uppercase tracking-wider font-bold px-8 ${cuadra ? "bg-success text-success-foreground hover:bg-success/90" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}`}
@@ -617,6 +727,43 @@ export default function CierreTurnoModal({
             )}
           </DialogContent>
         </Dialog>
+
+        {/* aviso despachadores $0 */}
+        <Dialog open={confirmCierreSinPago} onOpenChange={setConfirmCierreSinPago}>
+          <DialogContent className="bg-card border-border max-w-md">
+            <DialogHeader>
+              <DialogTitle className="font-display text-xl flex items-center gap-2 text-warning">
+                <AlertTriangle className="h-5 w-5" />
+                Despachadores sin pago
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 text-sm">
+              <p className="text-muted-foreground">
+                Hay {despachadoresSinPago.length} despachador{despachadoresSinPago.length !== 1 ? "es" : ""} sin pago registrado:
+              </p>
+              <ul className="space-y-1 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2">
+                {despachadoresSinPago.map((p, i) => (
+                  <li key={`${p.despachador_id ?? p.nombre}-${i}`} className="text-warning font-medium">
+                    - {p.nombre}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-foreground">¿Confirmar cierre de turno de todas formas?</p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setConfirmCierreSinPago(false)} disabled={saving}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => void cerrarTurno()}
+                disabled={saving}
+                className="bg-warning text-warning-foreground hover:bg-warning/90 uppercase tracking-wider font-bold"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar cierre"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
           </>
         )}
       </DialogContent>
@@ -625,13 +772,15 @@ export default function CierreTurnoModal({
 }
 
 function Step1({
-  desps, turnoId, prestamos, onPrestamoChange, onPagado,
+  desps, turnoId, prestamos, pagosDesp, onPrestamoChange, onManualesChange, onPagado,
 }: {
   desps: DespRow[];
   turnoId: string;
   prestamos: PrestamoDesp[];
+  pagosDesp: PagoDesp[];
   onPrestamoChange: () => void;
-  onPagado: (id: string, total: number) => void;
+  onManualesChange: () => void;
+  onPagado: (id: string, total: number, nombre: string, despachadorId: string) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   if (desps.length === 0) {
@@ -640,7 +789,8 @@ function Step1({
   return (
     <div className="space-y-2">
       {desps.map((d) => {
-        const pr = prestamos.find((p) => p.despachador_id === d.td.despachador_id) ?? null;
+        const prestamosDesp = prestamos.filter((p) => p.despachador_id === d.td.despachador_id);
+        const pagoPrev = pagosDesp.find((p) => p.despachador_id === d.td.despachador_id);
         return (
         <PagarDespachadorCard
           key={d.td.id}
@@ -649,11 +799,14 @@ function Step1({
           nombre={d.nombre}
           entregados={d.entregados}
           cobrado={d.cobrado}
-          prestamo={pr}
+          manuales={d.manuales}
+          prestamos={prestamosDesp}
+          montoYaPagado={pagoPrev?.total_a_pagar}
           onPrestamoChange={onPrestamoChange}
+          onManualesChange={onManualesChange}
           expanded={openId === d.td.id}
           onToggle={(o) => setOpenId(o ? d.td.id : null)}
-          onPagado={(total) => onPagado(d.td.id, total)}
+          onPagado={(total) => onPagado(d.td.id, total, d.nombre, d.td.despachador_id)}
         />
         );
       })}
@@ -761,7 +914,7 @@ function Step2({
                 <td className="px-4 py-3">
                   <InputCajasUnidades
                     insumo={r}
-                    valorMl={r.cantidadReal}
+                    valorMl={r.contado ? r.cantidadReal : null}
                     onChange={(v) => updateInv(r.insumo_id, { cantidadReal: v, contado: true })}
                   />
                 </td>
@@ -789,6 +942,7 @@ function Step3(props: {
   totalTarjeta: number;
   totalGastosEfectivo: number;
   totalPagoDesp: number;
+  pagosDespDetalle: PagoDesp[];
   efectivoEsperado: number;
   efectivoDeclaradoCaja: string;
   setEfectivoDeclaradoCaja: (v: string) => void;
@@ -809,7 +963,7 @@ function Step3(props: {
     cajaChicaInicial, cajaChicaFinal, cajaChicaEsperada, sobreEsperado, mostrarSobre,
     efectivoGanancias, totalEnCaja,
     totalEfectivoVentas, totalTransferencias, totalTarjeta, totalGastosEfectivo,
-    totalPagoDesp,
+    totalPagoDesp, pagosDespDetalle,
     efectivoDeclaradoCaja, setEfectivoDeclaradoCaja,
     efectivoDeclaradoSobre, setEfectivoDeclaradoSobre,
     diffCaja, diffSobre, diferenciaTotal, declaracionCompleta,
@@ -846,7 +1000,33 @@ function Step3(props: {
 
         <p className="text-xs uppercase tracking-widest text-muted-foreground pt-2 pb-1">Egresos</p>
         <CuadreRow label="Gastos en efectivo" value={`−${fmtCLP(totalGastosEfectivo)}`} negative />
-        <CuadreRow label="Pago a despachadores" value={`−${fmtCLP(totalPagoDesp)}`} negative />
+        <div className="py-1">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Pago a despachadores</span>
+            <span className="font-mono text-destructive">−{fmtCLP(totalPagoDesp)}</span>
+          </div>
+          {pagosDespDetalle.length > 0 && (
+            <div className="mt-1.5 ml-1 space-y-0.5 border-l border-border pl-3">
+              {pagosDespDetalle.map((p, i) => {
+                const sinPago = !(p.total_a_pagar > 0);
+                return (
+                  <div key={`${p.despachador_id ?? p.nombre}-${i}`} className="flex items-center justify-between text-xs gap-2">
+                    <span className={`truncate ${sinPago ? "text-warning" : "text-success"}`}>
+                      {sinPago ? "⏳" : "✅"} {p.nombre}
+                    </span>
+                    <span className={`font-mono shrink-0 ${sinPago ? "text-warning" : "text-success"}`}>
+                      {sinPago ? (
+                        <>{fmtCLP(0)} <span className="normal-case font-sans">pendiente</span></>
+                      ) : (
+                        fmtCLP(p.total_a_pagar)
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         <CuadreSep />
 
@@ -1057,7 +1237,7 @@ function SectionCard({
 }) {
   return (
     <Collapsible open={isOpen} onOpenChange={onToggle}>
-      <div className={`bg-card border rounded-xl overflow-hidden transition-colors ${done ? "border-success/40" : "border-border"}`}>
+      <div className={`bg-card border rounded-xl transition-colors ${done ? "border-success/40" : "border-border"}`}>
         <CollapsibleTrigger asChild>
           <button
             type="button"
