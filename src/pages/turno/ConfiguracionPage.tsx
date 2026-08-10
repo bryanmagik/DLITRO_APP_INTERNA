@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Printer, RefreshCw, Save, Cloud, Usb, SearchCheck } from "lucide-react";
+import { Loader2, Printer, RefreshCw, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "sonner";
 import {
   DEFAULT_IMPRESORA_COCINA,
   DEFAULT_IMPRESORA_TOMA,
-  DEFAULT_PRINTNODE_ID_COCINA,
-  DEFAULT_PRINTNODE_ID_TOMA,
   getConfigImpresoraCocina,
   getConfigImpresoraToma,
   getMetodoImpresion,
@@ -20,7 +16,6 @@ import {
   setConfigImpresoraCocina,
   setConfigImpresoraToma,
   setMetodoImpresion,
-  verificarImpresoraPrintNode,
   type MetodoImpresion,
   type PrinterConfig,
 } from "@/services/printer";
@@ -31,26 +26,20 @@ function CardImpresora({
   config,
   impresoras,
   defaultNombre,
-  defaultPrintNodeId,
   loading,
   onChange,
   onPrueba,
-  onVerificar,
   probando,
-  verificando,
 }: {
   titulo: string;
   descripcion: string;
   config: PrinterConfig;
   impresoras: string[];
   defaultNombre: string;
-  defaultPrintNodeId: number;
   loading: boolean;
   onChange: (c: PrinterConfig) => void;
   onPrueba: () => void;
-  onVerificar: () => void;
   probando: boolean;
-  verificando: boolean;
 }) {
   const opciones = impresoras.includes(config.nombre)
     ? impresoras
@@ -74,66 +63,25 @@ function CardImpresora({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Modo</Label>
-        <ToggleGroup
-          type="single"
-          value={config.modo}
-          onValueChange={(v) => v && patch({ modo: v as PrinterConfig["modo"] })}
-          className="justify-start"
-        >
-          <ToggleGroupItem value="printnode" className="gap-1.5 px-4 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
-            <Cloud className="h-3.5 w-3.5" /> PrintNode
-          </ToggleGroupItem>
-          <ToggleGroupItem value="usb" className="gap-1.5 px-4 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
-            <Usb className="h-3.5 w-3.5" /> USB fallback
-          </ToggleGroupItem>
-        </ToggleGroup>
+      <div className="space-y-1.5">
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Impresora local</Label>
+        <Select value={config.nombre} onValueChange={(v) => patch({ nombre: v })} disabled={loading}>
+          <SelectTrigger className="bg-background">
+            <SelectValue placeholder={loading ? "Cargando impresoras…" : "Seleccionar impresora"} />
+          </SelectTrigger>
+          <SelectContent>
+            {opciones.map((nombre) => (
+              <SelectItem key={nombre} value={nombre}>{nombre}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-
-      {config.modo === "printnode" ? (
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">ID PrintNode</Label>
-            <Input
-              type="number"
-              min={1}
-              value={config.printNodeId || defaultPrintNodeId}
-              onChange={(e) => patch({ printNodeId: parseInt(e.target.value, 10) || defaultPrintNodeId })}
-              className="bg-background font-mono"
-            />
-          </div>
-          <Button
-            variant="outline"
-            className="w-full uppercase tracking-wider"
-            onClick={onVerificar}
-            disabled={verificando || !config.printNodeId}
-          >
-            {verificando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <SearchCheck className="h-4 w-4 mr-2" />}
-            Verificar impresora
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">Impresora USB (fallback)</Label>
-          <Select value={config.nombre} onValueChange={(v) => patch({ nombre: v })} disabled={loading}>
-            <SelectTrigger className="bg-background">
-              <SelectValue placeholder={loading ? "Cargando impresoras…" : "Seleccionar impresora"} />
-            </SelectTrigger>
-            <SelectContent>
-              {opciones.map((nombre) => (
-                <SelectItem key={nombre} value={nombre}>{nombre}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
 
       <Button
         variant="outline"
         className="w-full uppercase tracking-wider"
         onClick={onPrueba}
-        disabled={probando || (config.modo === "printnode" ? !config.printNodeId : !config.nombre)}
+        disabled={probando || !config.nombre}
       >
         {probando ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Printer className="h-4 w-4 mr-2" />}
         Imprimir prueba
@@ -149,8 +97,6 @@ export default function ConfiguracionPage() {
   const [loading, setLoading] = useState(true);
   const [probandoToma, setProbandoToma] = useState(false);
   const [probandoCocina, setProbandoCocina] = useState(false);
-  const [verificandoToma, setVerificandoToma] = useState(false);
-  const [verificandoCocina, setVerificandoCocina] = useState(false);
   const [metodo, setMetodoState] = useState<MetodoImpresion>(getMetodoImpresion);
   const [ultimoLog, setUltimoLog] = useState(getUltimoLogImpresion);
 
@@ -179,28 +125,11 @@ export default function ConfiguracionPage() {
     try {
       await imprimirPrueba(rol, config);
       setUltimoLog(getUltimoLogImpresion());
-      const destino = config.modo === "printnode" ? `PrintNode #${config.printNodeId}` : config.nombre;
-      toast.success(`Prueba enviada a ${destino}`);
+      toast.success(`Prueba enviada a ${config.nombre}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo imprimir la prueba");
     } finally {
       setProbando(false);
-    }
-  };
-
-  const verificar = async (config: PrinterConfig, setVerificando: (v: boolean) => void) => {
-    setVerificando(true);
-    try {
-      const estado = await verificarImpresoraPrintNode(config.printNodeId);
-      if (estado.online) {
-        toast.success(estado.nombre ? `${estado.mensaje} (${estado.nombre})` : estado.mensaje);
-      } else {
-        toast.error(estado.mensaje);
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo verificar la impresora");
-    } finally {
-      setVerificando(false);
     }
   };
 
@@ -217,7 +146,7 @@ export default function ConfiguracionPage() {
       </div>
 
       <div className="bg-card border border-border rounded-xl p-5 space-y-2">
-        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Método USB fallback</Label>
+        <Label className="text-xs uppercase tracking-wider text-muted-foreground">Método de impresión local</Label>
         <Select value={metodo} onValueChange={(v) => setMetodoState(v as MetodoImpresion)}>
           <SelectTrigger className="bg-background max-w-md">
             <SelectValue />
@@ -229,7 +158,7 @@ export default function ConfiguracionPage() {
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          <strong>PrintNode</strong> es el modo principal (nube). Si falla o no hay internet, se usa USB automáticamente con el método configurado arriba.
+          La impresión se realiza localmente mediante Tauri usando la impresora instalada en este puesto.
         </p>
       </div>
 
@@ -240,13 +169,10 @@ export default function ConfiguracionPage() {
           config={configToma}
           impresoras={impresoras}
           defaultNombre={DEFAULT_IMPRESORA_TOMA}
-          defaultPrintNodeId={DEFAULT_PRINTNODE_ID_TOMA}
           loading={loading}
           onChange={setConfigTomaState}
           onPrueba={() => probar("Toma de Pedidos", configToma, setProbandoToma)}
-          onVerificar={() => verificar(configToma, setVerificandoToma)}
           probando={probandoToma}
-          verificando={verificandoToma}
         />
         <CardImpresora
           titulo="Impresora Cocina / Preparación"
@@ -254,13 +180,10 @@ export default function ConfiguracionPage() {
           config={configCocina}
           impresoras={impresoras}
           defaultNombre={DEFAULT_IMPRESORA_COCINA}
-          defaultPrintNodeId={DEFAULT_PRINTNODE_ID_COCINA}
           loading={loading}
           onChange={setConfigCocinaState}
           onPrueba={() => probar("Cocina", configCocina, setProbandoCocina)}
-          onVerificar={() => verificar(configCocina, setVerificandoCocina)}
           probando={probandoCocina}
-          verificando={verificandoCocina}
         />
       </div>
 
@@ -278,7 +201,7 @@ export default function ConfiguracionPage() {
       )}
 
       <p className="text-xs text-muted-foreground">
-        PrintNode por defecto: toma #{DEFAULT_PRINTNODE_ID_TOMA}, cocina #{DEFAULT_PRINTNODE_ID_COCINA}. USB fallback: «{DEFAULT_IMPRESORA_TOMA}» / «{DEFAULT_IMPRESORA_COCINA}».
+        Impresoras por defecto: «{DEFAULT_IMPRESORA_TOMA}» / «{DEFAULT_IMPRESORA_COCINA}».
       </p>
     </div>
   );

@@ -14,28 +14,12 @@ import {
   type ComandaCocinaData,
   type ComandaData,
 } from "@/lib/printComanda";
-import {
-  DEFAULT_PRINTNODE_ID_COCINA,
-  DEFAULT_PRINTNODE_ID_TOMA,
-  imprimirViaPrintNode,
-  verificarImpresoraPrintNode,
-} from "@/services/printnode";
-
 export { ANCHO };
-export { verificarImpresoraPrintNode } from "@/services/printnode";
-export {
-  DEFAULT_PRINTNODE_ID_COCINA,
-  DEFAULT_PRINTNODE_ID_TOMA,
-  PRINTNODE_ID_SLK_TS100,
-} from "@/services/printnode";
 
 const KEY_TOMA = "dlitro_impresora_toma";
 const KEY_COCINA = "dlitro_impresora_cocina";
 const KEY_CONFIG_TOMA = "dlitro_impresora_config_toma";
 const KEY_CONFIG_COCINA = "dlitro_impresora_config_cocina";
-/** IDs PrintNode (legacy, usados por configuración manual) */
-const KEY_PRINTNODE_TOMA = "dlitro_printer_toma_pedidos";
-const KEY_PRINTNODE_COCINA = "dlitro_printer_preparacion";
 const KEY_METODO = "dlitro_impresion_metodo";
 const KEY_ULTIMO_LOG = "dlitro_impresion_ultimo_log";
 export const DEFAULT_IMPRESORA_TOMA = "sewoo toma de pedidos";
@@ -44,13 +28,9 @@ export const DEFAULT_IMPRESORA_COCINA = "sewoo preparacion";
 export const DEFAULT_IMPRESORA = DEFAULT_IMPRESORA_TOMA;
 
 export type MetodoImpresion = "auto" | "plugin" | "raw";
-export type ModoImpresora = "printnode" | "usb";
 export type TipoComandaImpresion = "toma_pedidos" | "preparacion";
 
 export interface PrinterConfig {
-  modo: ModoImpresora;
-  printNodeId: number;
-  /** Nombre de impresora Windows para fallback USB */
   nombre: string;
 }
 
@@ -60,14 +40,14 @@ export interface PedidoImpresion {
 }
 
 export interface ResultadoImpresion {
-  metodo: "printnode" | "plugin" | "raw" | "web";
+  metodo: "plugin" | "raw" | "web";
   ok: boolean;
   resultado?: string;
   error?: string;
 }
 
-function defaultConfig(defaultPrintNodeId: number, nombre: string): PrinterConfig {
-  return { modo: "printnode", printNodeId: defaultPrintNodeId, nombre };
+function defaultConfig(nombre: string): PrinterConfig {
+  return { nombre };
 }
 
 function migrarConfigAntigua() {
@@ -82,88 +62,56 @@ function migrarConfigAntigua() {
 }
 
 function normalizarConfig(
-  parsed: Partial<PrinterConfig> & { modo?: string; ip?: string },
-  defaultPrintNodeId: number,
+  parsed: Partial<PrinterConfig>,
   defaultNombre: string,
 ): PrinterConfig | null {
-  const modoRaw = parsed.modo;
-  let modo: ModoImpresora | null = null;
-  if (modoRaw === "printnode" || modoRaw === "usb") modo = modoRaw;
-  else if (modoRaw === "red") modo = "usb";
-
-  if (!modo) return null;
-
   return {
-    modo,
-    printNodeId: parsed.printNodeId ?? defaultPrintNodeId,
     nombre: parsed.nombre ?? defaultNombre,
   };
-}
-
-function printNodeLegacyKey(tipo: TipoComandaImpresion): string {
-  return tipo === "toma_pedidos" ? KEY_PRINTNODE_TOMA : KEY_PRINTNODE_COCINA;
-}
-
-function resolvePrintNodeId(tipo: TipoComandaImpresion, config: PrinterConfig): number {
-  const legacy = localStorage.getItem(printNodeLegacyKey(tipo));
-  if (legacy) {
-    const id = parseInt(legacy, 10);
-    if (!Number.isNaN(id) && id > 0) return id;
-  }
-  return config.printNodeId;
 }
 
 function loadConfig(
   key: string,
   legacyKey: string,
-  printNodeLegacyKeyName: string,
-  defaultPrintNodeId: number,
   defaultNombre: string,
 ): PrinterConfig {
   const raw = localStorage.getItem(key);
   let cfg: PrinterConfig | null = null;
   if (raw) {
     try {
-      const parsed = JSON.parse(raw) as Partial<PrinterConfig> & { modo?: string };
-      cfg = normalizarConfig(parsed, defaultPrintNodeId, defaultNombre);
+      const parsed = JSON.parse(raw) as Partial<PrinterConfig>;
+      cfg = normalizarConfig(parsed, defaultNombre);
     } catch { /* ignore */ }
   }
 
   if (!cfg) {
     migrarConfigAntigua();
     const nombre = localStorage.getItem(legacyKey) || defaultNombre;
-    cfg = defaultConfig(defaultPrintNodeId, nombre);
-  }
-
-  const legacyId = localStorage.getItem(printNodeLegacyKeyName);
-  if (legacyId) {
-    const id = parseInt(legacyId, 10);
-    if (!Number.isNaN(id) && id > 0) cfg.printNodeId = id;
+    cfg = defaultConfig(nombre);
   }
 
   return cfg;
 }
 
-function saveConfig(key: string, legacyKey: string, printNodeLegacyKeyName: string, config: PrinterConfig) {
+function saveConfig(key: string, legacyKey: string, config: PrinterConfig) {
   localStorage.setItem(key, JSON.stringify(config));
   localStorage.setItem(legacyKey, config.nombre);
-  localStorage.setItem(printNodeLegacyKeyName, String(config.printNodeId));
 }
 
 export function getConfigImpresoraToma(): PrinterConfig {
-  return loadConfig(KEY_CONFIG_TOMA, KEY_TOMA, KEY_PRINTNODE_TOMA, DEFAULT_PRINTNODE_ID_TOMA, DEFAULT_IMPRESORA_TOMA);
+  return loadConfig(KEY_CONFIG_TOMA, KEY_TOMA, DEFAULT_IMPRESORA_TOMA);
 }
 
 export function setConfigImpresoraToma(config: PrinterConfig) {
-  saveConfig(KEY_CONFIG_TOMA, KEY_TOMA, KEY_PRINTNODE_TOMA, config);
+  saveConfig(KEY_CONFIG_TOMA, KEY_TOMA, config);
 }
 
 export function getConfigImpresoraCocina(): PrinterConfig {
-  return loadConfig(KEY_CONFIG_COCINA, KEY_COCINA, KEY_PRINTNODE_COCINA, DEFAULT_PRINTNODE_ID_COCINA, DEFAULT_IMPRESORA_COCINA);
+  return loadConfig(KEY_CONFIG_COCINA, KEY_COCINA, DEFAULT_IMPRESORA_COCINA);
 }
 
 export function setConfigImpresoraCocina(config: PrinterConfig) {
-  saveConfig(KEY_CONFIG_COCINA, KEY_COCINA, KEY_PRINTNODE_COCINA, config);
+  saveConfig(KEY_CONFIG_COCINA, KEY_COCINA, config);
 }
 
 export function cargarConfigImpresora(tipo: TipoComandaImpresion): PrinterConfig {
@@ -205,20 +153,6 @@ function guardarLog(entry: Record<string, unknown>) {
   const line = `[${new Date().toISOString()}] ${JSON.stringify(entry)}`;
   console.log("DLITRO impresión:", line);
   localStorage.setItem(KEY_ULTIMO_LOG, line);
-}
-
-/** Mismo envelope ESC/POS que el spooler RAW de Windows: init + texto + feed + corte. */
-export function buildEscPosPayload(texto: string): Uint8Array {
-  const init = new Uint8Array([0x1b, 0x40]);
-  const textBytes = new TextEncoder().encode(texto);
-  const feed = new Uint8Array([0x0a, 0x0a, 0x0a]);
-  const cut = new Uint8Array([0x1d, 0x56, 0x00]);
-  const all = new Uint8Array(init.length + textBytes.length + feed.length + cut.length);
-  all.set(init, 0);
-  all.set(textBytes, init.length);
-  all.set(feed, init.length + textBytes.length);
-  all.set(cut, init.length + textBytes.length + feed.length);
-  return all;
 }
 
 function pluginPareceFallido(result: string): boolean {
@@ -319,28 +253,14 @@ async function imprimirUsbFallback(texto: string, html: string, config: PrinterC
   throw new Error(pluginResult.error ?? "Falló impresión por plugin");
 }
 
-/** Envía bytes ESC/POS vía PrintNode o fallback USB según configuración. */
+/** Imprime mediante la integración local de Tauri configurada. */
 export async function imprimirComandaEscPos(
-  contenido: Uint8Array,
   tipo: TipoComandaImpresion,
-  titulo: string = "Comanda dlitro",
   textoFallback?: string,
   htmlFallback?: string,
   configOverride?: PrinterConfig,
 ): Promise<void> {
   const config = configOverride ?? cargarConfigImpresora(tipo);
-
-  if (config.modo === "printnode") {
-    const printerId = resolvePrintNodeId(tipo, config);
-    try {
-      await imprimirViaPrintNode(printerId, contenido, titulo);
-      guardarLog({ metodo: "printnode", printerId, tipo, bytes: contenido.length, titulo });
-      return;
-    } catch (error) {
-      console.error("PrintNode falló, intentando USB:", error);
-      toast.warning("PrintNode no disponible, intentando USB...");
-    }
-  }
 
   if (!textoFallback || !htmlFallback) {
     throw new Error("Faltan datos para fallback USB");
@@ -435,11 +355,8 @@ function clonarComandaCocina(d: ComandaCocinaData): ComandaCocinaData {
 export async function imprimirComandaToma(pedido: ComandaData) {
   const texto = buildComandaTexto(pedido);
   const html = buildComandaHtml(pedido);
-  const payload = buildEscPosPayload(texto);
   await imprimirComandaEscPos(
-    payload,
     "toma_pedidos",
-    `Comanda toma #${pedido.numero}`,
     texto,
     html,
   );
@@ -448,11 +365,8 @@ export async function imprimirComandaToma(pedido: ComandaData) {
 export async function imprimirComandaCocina(pedido: ComandaCocinaData) {
   const texto = buildComandaCocinaTexto(pedido);
   const html = buildComandaCocinaHtml(pedido);
-  const payload = buildEscPosPayload(texto);
   await imprimirComandaEscPos(
-    payload,
     "preparacion",
-    `Comanda cocina #${pedido.numero}`,
     texto,
     html,
   );
@@ -470,11 +384,8 @@ export async function imprimirAmbas(pedido: PedidoImpresion): Promise<void> {
   try {
     const textoToma = buildComandaTexto(datosToma);
     const htmlToma = buildComandaHtml(datosToma);
-    const bytesToma = buildEscPosPayload(textoToma);
     await imprimirComandaEscPos(
-      bytesToma,
       "toma_pedidos",
-      `Comanda toma #${datosToma.numero}`,
       textoToma,
       htmlToma,
       configToma,
@@ -488,11 +399,8 @@ export async function imprimirAmbas(pedido: PedidoImpresion): Promise<void> {
   try {
     const textoCocina = buildComandaCocinaTexto(datosCocina);
     const htmlCocina = buildComandaCocinaHtml(datosCocina);
-    const bytesCocina = buildEscPosPayload(textoCocina);
     await imprimirComandaEscPos(
-      bytesCocina,
       "preparacion",
-      `Comanda cocina #${datosCocina.numero}`,
       textoCocina,
       htmlCocina,
       configCocina,
@@ -510,13 +418,10 @@ export async function imprimirAmbas(pedido: PedidoImpresion): Promise<void> {
 
 export async function imprimirPrueba(rol: "Toma de Pedidos" | "Cocina", config: PrinterConfig) {
   const tipo: TipoComandaImpresion = rol === "Toma de Pedidos" ? "toma_pedidos" : "preparacion";
-  const destino = config.modo === "printnode"
-    ? `PrintNode #${config.printNodeId}`
-    : config.nombre;
+  const destino = config.nombre;
   const texto = buildPruebaTexto(rol, destino);
   const html = buildPruebaHtml(rol, destino);
-  const payload = buildEscPosPayload(texto);
-  await imprimirComandaEscPos(payload, tipo, `Prueba ${rol}`, texto, html, config);
+  await imprimirComandaEscPos(tipo, texto, html, config);
 }
 
 export async function reimprimirToma(data: ComandaData) {
