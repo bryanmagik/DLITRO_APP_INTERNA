@@ -5,14 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:staging": "npm run verify:staging-env && vite --mode staging",
     "build": "vite build",
+    "build:staging": "npm run verify:staging-env && vite build --mode staging",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
-    "release:manifest": "node scripts/crear-release.js"
+    "release:manifest": "node scripts/crear-release.js",
+    "verify:staging-env": "node scripts/verify-staging-env.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
