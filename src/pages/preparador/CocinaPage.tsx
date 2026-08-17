@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
-import { Bike, Store, CheckCircle2, LogOut, RefreshCw, Bell, BellOff } from "lucide-react";
+import { Bike, Store, CheckCircle2, LogOut, RefreshCw, Bell, BellOff, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { formatSaborExtra } from "@/lib/printComanda";
 
@@ -20,6 +20,7 @@ interface PedidoCocina {
   tipo: "despacho" | "retiro";
   created_at: string;
   items: ItemRow[];
+  requiere_revision_cocina: boolean;
 }
 
 const fmtHaceMin = (iso: string) => {
@@ -103,7 +104,7 @@ export default function CocinaPage() {
       }
       const { data, error } = await supabase
         .from("pedidos")
-        .select("id, numero_pedido, cliente_nombre, tipo, created_at, pedido_items(id, cantidad, notas, producto:producto_id(nombre))")
+        .select("id, numero_pedido, cliente_nombre, tipo, created_at, requiere_revision_cocina, pedido_items(id, cantidad, notas, producto:producto_id(nombre))")
         .eq("turno_id", tId)
         .eq("estado", "en_preparacion")
         .order("created_at", { ascending: true });
@@ -118,6 +119,7 @@ export default function CocinaPage() {
         tipo: p.tipo as "despacho" | "retiro",
         created_at: p.created_at as string,
         items: ((p as { pedido_items?: ItemRow[] }).pedido_items ?? []) as ItemRow[],
+        requiere_revision_cocina: Boolean(p.requiere_revision_cocina),
       })) as PedidoCocina[];
       setPedidos(rows);
       // Detectar pedidos nuevos
@@ -312,6 +314,12 @@ export default function CocinaPage() {
                       {isDespacho ? "Despacho" : "Retiro"}
                     </div>
                   </header>
+
+                  {p.requiere_revision_cocina && (
+                    <div className="mt-3 flex items-center gap-2 rounded-md border border-destructive bg-destructive/20 px-3 py-2 text-sm font-bold uppercase tracking-wide text-destructive animate-pulse">
+                      <AlertTriangle className="h-4 w-4 shrink-0" /> Pedido modificado — revisar comanda
+                    </div>
+                  )}
 
                   <ul className="mt-4 space-y-2 border-y border-white/10 py-4">
                     {p.items.length === 0 && <li className="text-sm text-white/40">Sin items</li>}

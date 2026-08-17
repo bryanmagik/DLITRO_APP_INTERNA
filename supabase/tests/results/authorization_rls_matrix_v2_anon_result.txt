@@ -1,0 +1,18 @@
+RLS v2 ANONYMOUS SUITE — authorization_rls_matrix_v2_anon.sql
+Target project ref: suscxwjloggmbsqdlgpj (branch: staging-security)
+Executed: 2026-08-17T14:40:57.703Z
+
+TOTAL=9 PASS=9 FAIL=0
+
+No failures.
+
+--- ALL RESULTS ---
+[1] SELECT usuarios expected=DENY actual=DENY -> PASS :: blocked: no table grant on public.usuarios for anon
+[2] SELECT turnos expected=DENY actual=DENY -> PASS :: blocked: no table grant on public.turnos for anon
+[3] SELECT stock_sucursal expected=DENY actual=DENY -> PASS :: blocked: no table grant on public.stock_sucursal for anon
+[4] SELECT productos expected=DENY actual=DENY -> PASS :: blocked: no table grant on public.productos for anon (no public catalog browse today)
+[5] SELECT private.role_permissions expected=DENY actual=DENY -> PASS :: blocked: schema private has no usage grant for anon
+[6] EXECUTE private.has_permission expected=DENY actual=DENY -> PASS :: blocked: no EXECUTE grant for anon
+[7] SELECT (table grant) storage.objects expected=ALLOW actual=ALLOW -> PASS :: documented exception: product_images_public_read_v2 grants anon read of the productos bucket
+[8] SELECT bucket=productos storage.objects expected=ALLOW actual=ALLOW -> PASS :: anon can query the productos bucket (rows visible=0)
+[9] INSERT bucket=productos storage.objects expected=DENY actual=DENY -> PASS :: blocked: insert/update/delete policies are scoped "to authenticated" only

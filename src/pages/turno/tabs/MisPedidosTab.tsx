@@ -738,6 +738,10 @@ function PedidoDetalleModal({
   const meta = ESTADO_META[normalizarEstado(pedido.estado)];
   const estadoActual = normalizarEstado(pedido.estado);
   const pedidoCerrado = estadoActual === "entregado" || estadoActual === "cancelado";
+  // La comanda (pedido_items) se congela al entrar a despacho -- el resto del
+  // pedido (cliente, dirección, despachador, notas) sigue editable ahí, ver
+  // guard_pedido_items_lifecycle_v2 en 20260817164101_order_modification_lifecycle_rule.sql.
+  const itemsLocked = pedidoCerrado || estadoActual === "en_despacho";
 
   const subtotal = items.reduce((acc, it) => acc + it.precio_unitario * it.cantidad, 0);
   // NO recalcular promos al editar. Total editado = pedido.total original + delta de items.
@@ -1201,32 +1205,39 @@ function PedidoDetalleModal({
       return;
     }
     setSaving(true);
-    // 1) Reconciliar items: eliminar quitados, insertar nuevos, actualizar cantidades
+    // 1) Reconciliar items: eliminar quitados, insertar nuevos, actualizar cantidades.
+    // Se omite por completo si la comanda está bloqueada (en_despacho/entregado/
+    // cancelado): los controles de edición de items ya están ocultos en ese caso
+    // (itemsLocked), así que `items` es idéntico a `originalItems`, pero este loop
+    // reescribía cada item igualmente -- eso disparaba guard_pedido_items_lifecycle_v2
+    // aunque el usuario solo hubiera cambiado, por ejemplo, las notas.
     const currentIds = items.filter((i) => i.id).map((i) => i.id!);
-    const removidos = originalItemIds.filter((id) => !currentIds.includes(id));
-    const removedSnap = originalItemsSnapshot.filter((o) => o.id && !currentIds.includes(o.id));
-    const addedNow = items.filter((i) => !i.id);
-    if (removidos.length > 0) {
-      const { error: delErr } = await supabase.from("pedido_items").delete().in("id", removidos);
-      if (delErr) { setSaving(false); toast.error(delErr.message); return; }
-    }
-    for (const it of items) {
-      if (it.id) {
-        const { error: upErr } = await supabase.from("pedido_items").update({
-          cantidad: it.cantidad,
-          subtotal: it.precio_unitario * it.cantidad,
-        }).eq("id", it.id);
-        if (upErr) { setSaving(false); toast.error(upErr.message); return; }
-      } else {
-        const { error: insErr } = await supabase.from("pedido_items").insert({
-          pedido_id: pedido.id,
-          producto_id: it.producto_id,
-          cantidad: it.cantidad,
-          precio_unitario: it.precio_unitario,
-          subtotal: it.precio_unitario * it.cantidad,
-          notas: it.notas ?? null,
-        });
-        if (insErr) { setSaving(false); toast.error(insErr.message); return; }
+    const removidos = itemsLocked ? [] : originalItemIds.filter((id) => !currentIds.includes(id));
+    const removedSnap = itemsLocked ? [] : originalItemsSnapshot.filter((o) => o.id && !currentIds.includes(o.id));
+    const addedNow = itemsLocked ? [] : items.filter((i) => !i.id);
+    if (!itemsLocked) {
+      if (removidos.length > 0) {
+        const { error: delErr } = await supabase.from("pedido_items").delete().in("id", removidos);
+        if (delErr) { setSaving(false); toast.error(delErr.message); return; }
+      }
+      for (const it of items) {
+        if (it.id) {
+          const { error: upErr } = await supabase.from("pedido_items").update({
+            cantidad: it.cantidad,
+            subtotal: it.precio_unitario * it.cantidad,
+          }).eq("id", it.id);
+          if (upErr) { setSaving(false); toast.error(upErr.message); return; }
+        } else {
+          const { error: insErr } = await supabase.from("pedido_items").insert({
+            pedido_id: pedido.id,
+            producto_id: it.producto_id,
+            cantidad: it.cantidad,
+            precio_unitario: it.precio_unitario,
+            subtotal: it.precio_unitario * it.cantidad,
+            notas: it.notas ?? null,
+          });
+          if (insErr) { setSaving(false); toast.error(insErr.message); return; }
+        }
       }
     }
     const hayCambios = addedNow.length > 0 || removedSnap.length > 0;
@@ -1348,7 +1359,7 @@ function PedidoDetalleModal({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <Label className="label-upper text-xs">Productos del pedido</Label>
-                {!pedidoCerrado && (
+                {!itemsLocked && (
                   <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setCatalogoOpen(true)}>
                     <Plus className="h-3 w-3 mr-1" /> Agregar producto
                   </Button>
@@ -1366,7 +1377,7 @@ function PedidoDetalleModal({
                       <div className="text-[10px] font-mono text-muted-foreground">{fmtCLP(it.precio_unitario)} c/u</div>
                       {it.notas && <div className="text-[10px] text-muted-foreground italic truncate">{it.notas.replace(/Pulpa de /gi, "")}</div>}
                     </div>
-                    {!pedidoCerrado ? (
+                    {!itemsLocked ? (
                       <>
                         <div className="flex items-center gap-1">
                           <Button type="button" size="icon" variant="outline" className="h-6 w-6" onClick={() => cambiarCant(idx, -1)}>

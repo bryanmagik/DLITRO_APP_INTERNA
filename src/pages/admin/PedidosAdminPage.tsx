@@ -204,7 +204,7 @@ export default function PedidosAdminPage() {
     };
   }, [cargar]);
 
-  if (perfil && perfil.rol !== "superadmin") {
+  if (perfil && !["admin", "superadmin"].includes(perfil.rol)) {
     return <Navigate to="/admin/dashboard" replace />;
   }
 
@@ -213,7 +213,7 @@ export default function PedidosAdminPage() {
       <div>
         <h1 className="text-3xl font-display tracking-wide">📋 Pedidos</h1>
         <p className="text-sm text-muted-foreground">
-          Corrección de pedidos por día dlitro — solo superadmin
+          Corrección de pedidos por día dlitro — administración autorizada
         </p>
       </div>
 

@@ -1,0 +1,32 @@
+RLS v2 GUARD-TRIGGER SUITE — authorization_rls_matrix_v2_guards.sql
+Target project ref: suscxwjloggmbsqdlgpj (branch: staging-security)
+Executed: 2026-08-17T14:41:56.304Z
+
+TOTAL=8 PASS=7 FAIL=1
+
+--- FAILURES ---
+{
+  "actor": "preparador",
+  "actual": "DENY",
+  "case_name": "estado_only -> allowed_value",
+  "detail": "blocked by spurious vuelto diff -- see comment above this block; fix = add vuelto to excluded columns in guard_pedido_update_v2()",
+  "expected": "ALLOW",
+  "result": "FAIL",
+  "seq": 1
+}
+
+CLASSIFICATION: FUNCTIONAL BUG (not security). Root cause: pedidos.vuelto is a GENERATED ALWAYS AS (...) STORED column;
+NEW.vuelto reads as NULL inside the BEFORE UPDATE trigger while OLD.vuelto holds the stored value, so guard_pedido_update_v2()
+always sees a spurious diff on this column for ANY preparador update, even a pure estado-only change. Fails closed (denies a
+legitimate action), does not permit anything it should deny. Proposed fix (not applied): add 'vuelto' to the excluded-column
+array in private.guard_pedido_update_v2(). Confirmed pre-existing in the test file comments; this run reproduces it live on staging-security.
+
+--- ALL RESULTS ---
+[1] preparador :: estado_only -> allowed_value expected=ALLOW actual=DENY -> FAIL :: blocked by spurious vuelto diff -- see comment above this block; fix = add vuelto to excluded columns in guard_pedido_update_v2()
+[2] preparador :: estado_only -> disallowed_value(cancelado) expected=DENY actual=DENY -> PASS :: blocked: cancelado not in {en_preparacion,listo} for preparador
+[3] preparador :: estado(allowed) + total(financial, disallowed) expected=DENY actual=DENY -> PASS :: blocked: total is outside the allowed column set
+[4] preparador :: comanda_impresa only (allowed column, current estado retained) expected=DENY actual=DENY -> PASS :: blocked: guard enforces estado in {en_preparacion,listo} unconditionally for preparador
+[5] encargado :: financial fields, role != preparador expected=ALLOW actual=ALLOW -> PASS :: guard only restricts caller_role = preparador
+[6] encargado :: closed turno: observacion_descuadre only expected=ALLOW actual=ALLOW -> PASS :: annotation-only change on a closed shift succeeded
+[7] encargado :: closed turno: efectivo_declarado (correction, disallowed for encargado) expected=DENY actual=DENY -> PASS :: blocked: encargado may annotate a closed turno but not correct it
+[8] admin :: closed turno: efectivo_declarado (correction, role != encargado) expected=ALLOW actual=ALLOW -> PASS :: guard only restricts caller_role = encargado; admin holds closures.correct

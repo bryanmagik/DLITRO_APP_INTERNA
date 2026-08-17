@@ -1,0 +1,25 @@
+ORDER MODIFICATION LIFECYCLE RULE — authorization_rls_matrix_v2_order_lifecycle.sql
+Migration: 20260817164101_order_modification_lifecycle_rule.sql
+Target project ref: suscxwjloggmbsqdlgpj (branch: staging-security)
+Executed: 2026-08-17T16:46:29.317Z
+
+TOTAL=15 PASS=15 FAIL=0
+
+No failures.
+
+--- ALL RESULTS ---
+[1] tomador_a :: tomado: modificacion de item expected=ALLOW actual=ALLOW -> PASS :: item actualizado, pedido tomado editable
+[2] tomador_a :: en_preparacion: modificacion de item expected=ALLOW actual=ALLOW -> PASS :: item actualizado, pedido en_preparacion editable
+[3] tomador_a :: listo: modificacion operacional de item expected=ALLOW actual=ALLOW -> PASS :: item actualizado sobre pedido listo
+[4] tomador_a :: listo -> en_preparacion: estado final expected=en_preparacion actual=en_preparacion -> PASS :: estado del pedido tras la modificacion operacional
+[5] tomador_a :: listo -> en_preparacion: flag requiere_revision_cocina expected=true actual=true -> PASS :: senal visible para cocina
+[6] tomador_a :: listo -> en_preparacion: fila de auditoria en log_cambios_pedido expected=true actual=true -> PASS :: 1 fila(s) de auditoria encontradas
+[7] tomador_a :: en_despacho: modificacion de item expected=DENY actual=DENY -> PASS :: bloqueado por guard_pedido_items_lifecycle_v2
+[8] tomador_a :: en_despacho: modificacion de campo de pedidos (notas) expected=ALLOW actual=ALLOW -> PASS :: pedidos sigue editable en despacho (reconciliacion de entrega)
+[9] tomador_a :: entregado: modificacion de pedidos (no-admin) expected=DENY actual=DENY -> PASS :: bloqueado: terminal lock en guard_pedido_update_v2
+[10] tomador_a :: entregado: modificacion de item (no-admin) expected=DENY actual=DENY -> PASS :: bloqueado: terminal lock en guard_pedido_items_lifecycle_v2
+[11] tomador_a :: cancelado: modificacion de pedidos (no-admin) expected=DENY actual=DENY -> PASS :: bloqueado: terminal lock en guard_pedido_update_v2
+[12] admin :: entregado: modificacion de pedidos (admin) expected=ALLOW actual=ALLOW -> PASS :: admin puede corregir un pedido entregado (PedidosAdminPage)
+[13] admin :: entregado: modificacion de item (admin) expected=ALLOW actual=ALLOW -> PASS :: admin puede corregir items de un pedido entregado
+[14] preparador_a :: campo financiero: preparador modifica total/descuento expected=DENY actual=DENY -> PASS :: bloqueado por guard_pedido_update_v2 (diff de columnas)
+[15] tomador_a :: cross-branch: modificacion de item de otra sucursal expected=DENY actual=DENY -> PASS :: bloqueado: 0 filas (RLS pedido_in_scope)

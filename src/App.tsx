@@ -83,14 +83,7 @@ const App = () => (
               <Route path="/admin/auditoria-despachos" element={<AuditoriaDespachosPage />} />
               <Route path="/admin/auditoria" element={<AuditoriaDespachosPage />} />
               <Route path="/admin/sucursales" element={<SucursalesPage />} />
-              <Route
-                path="/admin/pedidos"
-                element={
-                  <ProtectedRoute roles={["superadmin"]}>
-                    <PedidosAdminPage />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/admin/pedidos" element={<PedidosAdminPage />} />
               <Route path="/admin/productos" element={<ProductosPage />} />
               <Route path="/admin/costos" element={<CostosPage />} />
               <Route path="/admin/recetas" element={<RecetasPage />} />
@@ -115,7 +108,7 @@ const App = () => (
               <Route path="/encargado/turnos" element={<PagePlaceholder title="Turnos" />} />
               <Route path="/encargado/stock" element={<PagePlaceholder title="Stock" />} />
               <Route path="/encargado/logistica" element={<LogisticaPage />} />
-              <Route path="/encargado/equipo" element={<PagePlaceholder title="Mi equipo" />} />
+              <Route path="/encargado/equipo" element={<UsuariosPage />} />
             </Route>
 
             {/* Tomador */}

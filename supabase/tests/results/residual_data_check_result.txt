@@ -1,0 +1,11 @@
+RESIDUAL DATA CHECK — after running all 4 RLS v2 suites against staging-security
+Target project ref: suscxwjloggmbsqdlgpj (branch: staging-security)
+
+sucursales_sinteticas   = 0
+usuarios_test_local     = 0
+pedidos_sinteticos      = 0
+turnos_sinteticos       = 0
+inventarios_sinteticos  = 0
+
+Result: 0 residuos. All four suites (matrix, anon, rpc, guards) correctly rolled back
+their BEGIN...ROLLBACK transactions; no synthetic fixture data was left persisted.

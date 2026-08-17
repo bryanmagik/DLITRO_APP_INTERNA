@@ -51,6 +51,7 @@ const ROLES: { value: Rol; label: string }[] = [
 ];
 
 const SIN_SUCURSAL = "__sin_sucursal__";
+const ROLES_OPERACIONALES: Rol[] = ["tomador_pedidos", "preparador", "despachador"];
 
 function nombreUsuario(u: Pick<Usuario, "nombre" | "apellido" | "nombre_completo">): string {
   return u.nombre_completo || `${u.nombre}${u.apellido ? ` ${u.apellido}` : ""}`.trim();
@@ -106,6 +107,9 @@ export default function UsuariosPage() {
 
   const abrirNuevo = () => {
     resetForm();
+    if (perfil?.rol === "encargado") {
+      setSucursalId(perfil.sucursal_id ?? SIN_SUCURSAL);
+    }
     setOpen(true);
   };
 
@@ -161,9 +165,12 @@ export default function UsuariosPage() {
           // Extraer el mensaje real del body de la respuesta (FunctionsHttpError)
           let msg = fnError.message;
           try {
-            const body = await (fnError as any).context?.json?.();
+            const context = (fnError as { context?: { json?: () => Promise<{ error?: string }> } }).context;
+            const body = await context?.json?.();
             if (body?.error) msg = body.error;
-          } catch {}
+          } catch {
+            // Keep the SDK message when the function response has no JSON body.
+          }
           throw new Error(msg);
         }
         if (fnData?.error) throw new Error(fnData.error);
@@ -187,9 +194,13 @@ export default function UsuariosPage() {
 
   const rolLabel = (r: Rol) => ROLES.find((x) => x.value === r)?.label ?? r;
 
-  if (perfil && !["superadmin", "admin"].includes(perfil.rol)) {
+  if (perfil && !["superadmin", "admin", "encargado"].includes(perfil.rol)) {
     return <p className="text-muted-foreground">No tenés permisos para ver esta página.</p>;
   }
+
+  const rolesDisponibles = perfil?.rol === "encargado"
+    ? ROLES.filter((r) => ROLES_OPERACIONALES.includes(r.value))
+    : ROLES;
 
   return (
     <div className="space-y-6">
@@ -327,7 +338,7 @@ export default function UsuariosPage() {
                 <Select value={rol} onValueChange={(v) => setRol(v as Rol)}>
                   <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {ROLES.map((r) => (
+                    {rolesDisponibles.map((r) => (
                       <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -338,7 +349,7 @@ export default function UsuariosPage() {
                 <Select value={sucursalId} onValueChange={setSucursalId}>
                   <SelectTrigger className="bg-background"><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={SIN_SUCURSAL}>Sin sucursal</SelectItem>
+                    {perfil?.rol !== "encargado" && <SelectItem value={SIN_SUCURSAL}>Sin sucursal</SelectItem>}
                     {sucursales.map((s) => (
                       <SelectItem key={s.id} value={s.id}>{s.nombre}</SelectItem>
                     ))}

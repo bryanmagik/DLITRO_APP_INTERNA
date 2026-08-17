@@ -1,0 +1,107 @@
+{
+  "all_results": [
+    {
+      "actor": "preparador",
+      "actual": "ALLOW",
+      "case_name": "P1: estado_only tomado -> en_preparacion (allowed transition)",
+      "detail": "estado-only change to en_preparacion succeeded",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 1
+    },
+    {
+      "actor": "preparador",
+      "actual": "DENY",
+      "case_name": "P2: estado_only tomado -> cancelado (disallowed value)",
+      "detail": "blocked: cancelado not in {en_preparacion,listo} for preparador",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 2
+    },
+    {
+      "actor": "preparador",
+      "actual": "DENY",
+      "case_name": "P3: estado(allowed) + total(financial, disallowed)",
+      "detail": "blocked: total is outside the allowed column set",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 3
+    },
+    {
+      "actor": "preparador",
+      "actual": "DENY",
+      "case_name": "Caso A: comanda_impresa only, estado=tomado",
+      "detail": "blocked: resulting estado (tomado) is not in {en_preparacion,listo}; matches current CocinaPage.tsx scope (kitchen only sees en_preparacion orders)",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 4
+    },
+    {
+      "actor": "preparador",
+      "actual": "ALLOW",
+      "case_name": "Caso B: comanda_impresa only, estado=en_preparacion",
+      "detail": "confirmed business rule: comanda editable while cocina prepara el pedido",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 5
+    },
+    {
+      "actor": "preparador",
+      "actual": "ALLOW",
+      "case_name": "Caso C [BUSINESS RULE AMBIGUITY]: comanda_impresa only, estado=listo",
+      "detail": "current implementation allows this (listo is in the same allowed-estado set as en_preparacion); NOT yet confirmed as an intended business rule -- flagged for follow-up, no security change made",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 6
+    },
+    {
+      "actor": "preparador",
+      "actual": "DENY",
+      "case_name": "Caso D: comanda_impresa only, pedido en otra sucursal",
+      "detail": "blocked by pedidos_update_v2 RLS policy (can_access_sucursal): 0 rows matched/updated",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 7
+    },
+    {
+      "actor": "encargado",
+      "actual": "ALLOW",
+      "case_name": "P8: financial fields, role != preparador",
+      "detail": "guard only restricts caller_role = preparador",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 8
+    },
+    {
+      "actor": "encargado",
+      "actual": "ALLOW",
+      "case_name": "closed turno: observacion_descuadre only",
+      "detail": "annotation-only change on a closed shift succeeded",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 9
+    },
+    {
+      "actor": "encargado",
+      "actual": "DENY",
+      "case_name": "closed turno: efectivo_declarado (correction, disallowed for encargado)",
+      "detail": "blocked: encargado may annotate a closed turno but not correct it",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 10
+    },
+    {
+      "actor": "admin",
+      "actual": "ALLOW",
+      "case_name": "closed turno: efectivo_declarado (correction, role != encargado)",
+      "detail": "guard only restricts caller_role = encargado; admin holds closures.correct",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 11
+    }
+  ],
+  "fail": 0,
+  "failures": [],
+  "pass": 11,
+  "total": 11
+}

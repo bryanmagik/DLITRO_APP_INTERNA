@@ -1,0 +1,56 @@
+RLS v2 GUARD-TRIGGER SUITE (ISOLATED FIXTURES) — authorization_rls_matrix_v2_guards.sql
+Run AFTER: (1) migration 20260817144833_fix_guard_pedido_update_v2_vuelto_diff.sql, and
+(2) rewriting the test file to use independent pedido fixtures per case + row-count-based
+detection (GET DIAGNOSTICS ROW_COUNT) instead of exception-only detection.
+Target project ref: suscxwjloggmbsqdlgpj (branch: staging-security)
+Executed: 2026-08-17T15:20:38.718Z
+
+TOTAL=11 PASS=11 FAIL=0
+
+--- HISTORY ACROSS THE THREE RUNS OF THIS FILE ---
+1) authorization_rls_matrix_v2_guards_result.json            : 7/8  (seq1 FAIL — vuelto bug, shared fixture)
+2) authorization_rls_matrix_v2_guards_after_vuelto_fix_result.json : 7/8  (seq4 FAIL — test-order dependency exposed once vuelto was fixed)
+3) authorization_rls_matrix_v2_guards_isolated_comanda_result.json : 11/11 (this file — independent fixtures per case + row-count detection)
+
+No failures.
+
+--- ROOT CAUSE OF THE PRIOR seq4 FAILURE (confirmed with evidence) ---
+The original file ran 4 sequential preparador UPDATEs against ONE shared pedido row.
+Before the vuelto fix, case 1 (estado tomado->en_preparacion) always raised an exception
+and its UPDATE was rolled back by the implicit PL/pgSQL savepoint, so the row stayed at
+estado='tomado' for every later case. The old case 4 (comanda_impresa only) then correctly
+DENY'd, because 'tomado' is not in {en_preparacion,listo}. Its own ALLOW-branch text even
+said "unexpected: current estado is tomado" -- direct evidence the author assumed that state.
+After the vuelto fix, case 1 legitimately SUCCEEDS and persists estado='en_preparacion' on
+that same shared row. Case 4 then runs against estado='en_preparacion' (already an allowed
+value), so it correctly ALLOWs -- flipping the old hardcoded DENY expectation. Classification:
+TEST ORDER DEPENDENCY, confirmed with code evidence, not a security regression.
+
+--- SECOND ISSUE FOUND AND FIXED DURING THIS PASS (not present before) ---
+The first isolated-fixture rewrite of Caso D (preparador on a Branch B pedido) reported a
+false ALLOW, because it only checked for a thrown exception. RLS USING-clause denial on
+UPDATE does not raise an exception -- it silently matches 0 rows. A standalone diagnostic
+(BEGIN...ROLLBACK, not part of the suite) confirmed 0 rows updated AND 0 rows visible via
+SELECT for a Branch-A preparador against a Branch-B pedido -- i.e. no real bypass ever
+existed. Fixed by adding GET DIAGNOSTICS ROW_COUNT checks to every preparador/pedido case.
+Classification: TEST BUG (detection-method flaw in the new test code), not a security bug.
+
+--- COMANDA CASES SUMMARY ---
+Estado        | Scope          | Expected | Actual | Result
+tomado        | own branch     | DENY     | DENY   | PASS
+en_preparacion| own branch     | ALLOW    | ALLOW  | PASS  (confirmed business rule)
+listo         | own branch     | ALLOW    | ALLOW  | PASS  (BUSINESS RULE AMBIGUITY — matches current code, not yet business-confirmed for listo specifically)
+en_preparacion| other branch   | DENY     | DENY   | PASS
+
+--- ALL RESULTS ---
+[1] preparador :: P1: estado_only tomado -> en_preparacion (allowed transition) expected=ALLOW actual=ALLOW -> PASS :: estado-only change to en_preparacion succeeded
+[2] preparador :: P2: estado_only tomado -> cancelado (disallowed value) expected=DENY actual=DENY -> PASS :: blocked: cancelado not in {en_preparacion,listo} for preparador
+[3] preparador :: P3: estado(allowed) + total(financial, disallowed) expected=DENY actual=DENY -> PASS :: blocked: total is outside the allowed column set
+[4] preparador :: Caso A: comanda_impresa only, estado=tomado expected=DENY actual=DENY -> PASS :: blocked: resulting estado (tomado) is not in {en_preparacion,listo}; matches current CocinaPage.tsx scope (kitchen only sees en_preparacion orders)
+[5] preparador :: Caso B: comanda_impresa only, estado=en_preparacion expected=ALLOW actual=ALLOW -> PASS :: confirmed business rule: comanda editable while cocina prepara el pedido
+[6] preparador :: Caso C [BUSINESS RULE AMBIGUITY]: comanda_impresa only, estado=listo expected=ALLOW actual=ALLOW -> PASS :: current implementation allows this (listo is in the same allowed-estado set as en_preparacion); NOT yet confirmed as an intended business rule -- flagged for follow-up, no security change made
+[7] preparador :: Caso D: comanda_impresa only, pedido en otra sucursal expected=DENY actual=DENY -> PASS :: blocked by pedidos_update_v2 RLS policy (can_access_sucursal): 0 rows matched/updated
+[8] encargado :: P8: financial fields, role != preparador expected=ALLOW actual=ALLOW -> PASS :: guard only restricts caller_role = preparador
+[9] encargado :: closed turno: observacion_descuadre only expected=ALLOW actual=ALLOW -> PASS :: annotation-only change on a closed shift succeeded
+[10] encargado :: closed turno: efectivo_declarado (correction, disallowed for encargado) expected=DENY actual=DENY -> PASS :: blocked: encargado may annotate a closed turno but not correct it
+[11] admin :: closed turno: efectivo_declarado (correction, role != encargado) expected=ALLOW actual=ALLOW -> PASS :: guard only restricts caller_role = encargado; admin holds closures.correct

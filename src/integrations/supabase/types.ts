@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.15"
   }
   public: {
     Tables: {
@@ -242,6 +242,118 @@ export type Database = {
           usado?: boolean | null
         }
         Relationships: []
+      }
+      despachos_manuales: {
+        Row: {
+          actualizado_por: string | null
+          concepto: string
+          creado_por: string | null
+          created_at: string | null
+          despachador_id: string
+          id: string
+          monto: number
+          turno_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          actualizado_por?: string | null
+          concepto: string
+          creado_por?: string | null
+          created_at?: string | null
+          despachador_id: string
+          id?: string
+          monto: number
+          turno_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          actualizado_por?: string | null
+          concepto?: string
+          creado_por?: string | null
+          created_at?: string | null
+          despachador_id?: string
+          id?: string
+          monto?: number
+          turno_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "despachos_manuales_actualizado_por_fkey"
+            columns: ["actualizado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "despachos_manuales_creado_por_fkey"
+            columns: ["creado_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "despachos_manuales_despachador_id_fkey"
+            columns: ["despachador_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "despachos_manuales_turno_id_fkey"
+            columns: ["turno_id"]
+            isOneToOne: false
+            referencedRelation: "turnos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      despachos_manuales_cambios: {
+        Row: {
+          changed_at: string
+          concepto: string
+          despachador_id: string
+          despacho_id: string
+          id: string
+          monto_anterior: number | null
+          monto_nuevo: number | null
+          operacion: string
+          turno_id: string
+          usuario_id: string | null
+        }
+        Insert: {
+          changed_at?: string
+          concepto: string
+          despachador_id: string
+          despacho_id: string
+          id?: string
+          monto_anterior?: number | null
+          monto_nuevo?: number | null
+          operacion: string
+          turno_id: string
+          usuario_id?: string | null
+        }
+        Update: {
+          changed_at?: string
+          concepto?: string
+          despachador_id?: string
+          despacho_id?: string
+          id?: string
+          monto_anterior?: number | null
+          monto_nuevo?: number | null
+          operacion?: string
+          turno_id?: string
+          usuario_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "despachos_manuales_cambios_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       direcciones_cliente: {
         Row: {
@@ -514,6 +626,51 @@ export type Database = {
           },
         ]
       }
+      log_cambios_pedido: {
+        Row: {
+          campo: string
+          created_at: string | null
+          id: string
+          pedido_id: string | null
+          usuario_id: string | null
+          valor_anterior: string | null
+          valor_nuevo: string | null
+        }
+        Insert: {
+          campo: string
+          created_at?: string | null
+          id?: string
+          pedido_id?: string | null
+          usuario_id?: string | null
+          valor_anterior?: string | null
+          valor_nuevo?: string | null
+        }
+        Update: {
+          campo?: string
+          created_at?: string | null
+          id?: string
+          pedido_id?: string | null
+          usuario_id?: string | null
+          valor_anterior?: string | null
+          valor_nuevo?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "log_cambios_pedido_pedido_id_fkey"
+            columns: ["pedido_id"]
+            isOneToOne: false
+            referencedRelation: "pedidos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "log_cambios_pedido_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pago_despachadores: {
         Row: {
           base_por_horas: number | null
@@ -573,51 +730,6 @@ export type Database = {
             columns: ["turno_id"]
             isOneToOne: false
             referencedRelation: "turnos"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      log_cambios_pedido: {
-        Row: {
-          id: string
-          pedido_id: string | null
-          usuario_id: string | null
-          campo: string
-          valor_anterior: string | null
-          valor_nuevo: string | null
-          created_at: string | null
-        }
-        Insert: {
-          id?: string
-          pedido_id?: string | null
-          usuario_id?: string | null
-          campo: string
-          valor_anterior?: string | null
-          valor_nuevo?: string | null
-          created_at?: string | null
-        }
-        Update: {
-          id?: string
-          pedido_id?: string | null
-          usuario_id?: string | null
-          campo?: string
-          valor_anterior?: string | null
-          valor_nuevo?: string | null
-          created_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "log_cambios_pedido_pedido_id_fkey"
-            columns: ["pedido_id"]
-            isOneToOne: false
-            referencedRelation: "pedidos"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "log_cambios_pedido_usuario_id_fkey"
-            columns: ["usuario_id"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
         ]
@@ -749,6 +861,7 @@ export type Database = {
           promo_tipo: Database["public"]["Enums"]["tipo_promo"] | null
           referencia_entrega: string | null
           referencia_pago: string | null
+          requiere_revision_cocina: boolean
           subtotal: number
           sucursal_id: string
           sync_id: string | null
@@ -756,7 +869,7 @@ export type Database = {
           tipo: Database["public"]["Enums"]["tipo_pedido"]
           tomador_id: string | null
           total: number
-          turno_id: string
+          turno_id: string | null
           updated_at: string | null
           vuelto: number | null
         }
@@ -793,6 +906,7 @@ export type Database = {
           promo_tipo?: Database["public"]["Enums"]["tipo_promo"] | null
           referencia_entrega?: string | null
           referencia_pago?: string | null
+          requiere_revision_cocina?: boolean
           subtotal: number
           sucursal_id: string
           sync_id?: string | null
@@ -800,7 +914,7 @@ export type Database = {
           tipo?: Database["public"]["Enums"]["tipo_pedido"]
           tomador_id?: string | null
           total: number
-          turno_id: string
+          turno_id?: string | null
           updated_at?: string | null
           vuelto?: number | null
         }
@@ -837,6 +951,7 @@ export type Database = {
           promo_tipo?: Database["public"]["Enums"]["tipo_promo"] | null
           referencia_entrega?: string | null
           referencia_pago?: string | null
+          requiere_revision_cocina?: boolean
           subtotal?: number
           sucursal_id?: string
           sync_id?: string | null
@@ -844,7 +959,7 @@ export type Database = {
           tipo?: Database["public"]["Enums"]["tipo_pedido"]
           tomador_id?: string | null
           total?: number
-          turno_id?: string
+          turno_id?: string | null
           updated_at?: string | null
           vuelto?: number | null
         }
@@ -896,6 +1011,62 @@ export type Database = {
             columns: ["turno_id"]
             isOneToOne: false
             referencedRelation: "turnos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pedidos_despacho_ajustes: {
+        Row: {
+          changed_at: string
+          costo_anterior: number | null
+          costo_calculado: number
+          costo_cobrado: number
+          diferencia: number | null
+          distancia_km: number | null
+          id: string
+          numero_pedido: number | null
+          operacion: string
+          pedido_id: string
+          sucursal_id: string
+          turno_id: string
+          usuario_id: string | null
+        }
+        Insert: {
+          changed_at?: string
+          costo_anterior?: number | null
+          costo_calculado: number
+          costo_cobrado: number
+          diferencia?: number | null
+          distancia_km?: number | null
+          id?: string
+          numero_pedido?: number | null
+          operacion: string
+          pedido_id: string
+          sucursal_id: string
+          turno_id: string
+          usuario_id?: string | null
+        }
+        Update: {
+          changed_at?: string
+          costo_anterior?: number | null
+          costo_calculado?: number
+          costo_cobrado?: number
+          diferencia?: number | null
+          distancia_km?: number | null
+          id?: string
+          numero_pedido?: number | null
+          operacion?: string
+          pedido_id?: string
+          sucursal_id?: string
+          turno_id?: string
+          usuario_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pedidos_despacho_ajustes_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
             referencedColumns: ["id"]
           },
         ]
@@ -1007,6 +1178,38 @@ export type Database = {
           },
         ]
       }
+      precios_trabajador: {
+        Row: {
+          activo: boolean | null
+          created_at: string | null
+          id: string
+          precio_trabajador: number
+          producto_id: string
+        }
+        Insert: {
+          activo?: boolean | null
+          created_at?: string | null
+          id?: string
+          precio_trabajador: number
+          producto_id: string
+        }
+        Update: {
+          activo?: boolean | null
+          created_at?: string | null
+          id?: string
+          precio_trabajador?: number
+          producto_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "precios_trabajador_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: true
+            referencedRelation: "productos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prestamos_despachador: {
         Row: {
           created_at: string
@@ -1048,206 +1251,6 @@ export type Database = {
             columns: ["turno_id"]
             isOneToOne: false
             referencedRelation: "turnos"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      despachos_manuales: {
-        Row: {
-          actualizado_por: string | null
-          creado_por: string | null
-          created_at: string | null
-          concepto: string
-          despachador_id: string
-          id: string
-          monto: number
-          turno_id: string
-          updated_at: string | null
-        }
-        Insert: {
-          actualizado_por?: string | null
-          creado_por?: string | null
-          created_at?: string | null
-          concepto: string
-          despachador_id: string
-          id?: string
-          monto: number
-          turno_id: string
-          updated_at?: string | null
-        }
-        Update: {
-          actualizado_por?: string | null
-          creado_por?: string | null
-          created_at?: string | null
-          concepto?: string
-          despachador_id?: string
-          id?: string
-          monto?: number
-          turno_id?: string
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "despachos_manuales_despachador_id_fkey"
-            columns: ["despachador_id"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "despachos_manuales_actualizado_por_fkey"
-            columns: ["actualizado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "despachos_manuales_creado_por_fkey"
-            columns: ["creado_por"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "despachos_manuales_turno_id_fkey"
-            columns: ["turno_id"]
-            isOneToOne: false
-            referencedRelation: "turnos"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      despachos_manuales_cambios: {
-        Row: {
-          changed_at: string
-          concepto: string
-          despachador_id: string
-          despacho_id: string
-          id: string
-          monto_anterior: number | null
-          monto_nuevo: number | null
-          operacion: string
-          turno_id: string
-          usuario_id: string | null
-        }
-        Insert: {
-          changed_at?: string
-          concepto: string
-          despachador_id: string
-          despacho_id: string
-          id?: string
-          monto_anterior?: number | null
-          monto_nuevo?: number | null
-          operacion: string
-          turno_id: string
-          usuario_id?: string | null
-        }
-        Update: {
-          changed_at?: string
-          concepto?: string
-          despachador_id?: string
-          despacho_id?: string
-          id?: string
-          monto_anterior?: number | null
-          monto_nuevo?: number | null
-          operacion?: string
-          turno_id?: string
-          usuario_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "despachos_manuales_cambios_usuario_id_fkey"
-            columns: ["usuario_id"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      pedidos_despacho_ajustes: {
-        Row: {
-          changed_at: string
-          costo_anterior: number | null
-          costo_calculado: number
-          costo_cobrado: number
-          diferencia: number
-          distancia_km: number | null
-          id: string
-          numero_pedido: number | null
-          operacion: string
-          pedido_id: string
-          sucursal_id: string
-          turno_id: string
-          usuario_id: string | null
-        }
-        Insert: {
-          changed_at?: string
-          costo_anterior?: number | null
-          costo_calculado: number
-          costo_cobrado: number
-          diferencia?: number
-          distancia_km?: number | null
-          id?: string
-          numero_pedido?: number | null
-          operacion: string
-          pedido_id: string
-          sucursal_id: string
-          turno_id: string
-          usuario_id?: string | null
-        }
-        Update: {
-          changed_at?: string
-          costo_anterior?: number | null
-          costo_calculado?: number
-          costo_cobrado?: number
-          diferencia?: number
-          distancia_km?: number | null
-          id?: string
-          numero_pedido?: number | null
-          operacion?: string
-          pedido_id?: string
-          sucursal_id?: string
-          turno_id?: string
-          usuario_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "pedidos_despacho_ajustes_usuario_id_fkey"
-            columns: ["usuario_id"]
-            isOneToOne: false
-            referencedRelation: "usuarios"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      precios_trabajador: {
-        Row: {
-          id: string
-          producto_id: string
-          precio_trabajador: number
-          activo: boolean | null
-          created_at: string | null
-        }
-        Insert: {
-          id?: string
-          producto_id: string
-          precio_trabajador: number
-          activo?: boolean | null
-          created_at?: string | null
-        }
-        Update: {
-          id?: string
-          producto_id?: string
-          precio_trabajador?: number
-          activo?: boolean | null
-          created_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "precios_trabajador_producto_id_fkey"
-            columns: ["producto_id"]
-            isOneToOne: true
-            referencedRelation: "productos"
             referencedColumns: ["id"]
           },
         ]
@@ -1333,6 +1336,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "promociones_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "productos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      promociones_precio: {
+        Row: {
+          activo: boolean | null
+          created_at: string | null
+          id: string
+          nombre: string | null
+          precio_promo: number
+          producto_id: string
+        }
+        Insert: {
+          activo?: boolean | null
+          created_at?: string | null
+          id?: string
+          nombre?: string | null
+          precio_promo: number
+          producto_id: string
+        }
+        Update: {
+          activo?: boolean | null
+          created_at?: string | null
+          id?: string
+          nombre?: string | null
+          precio_promo?: number
+          producto_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promociones_precio_producto_id_fkey"
             columns: ["producto_id"]
             isOneToOne: false
             referencedRelation: "productos"
@@ -1798,6 +1836,7 @@ export type Database = {
           efectivo_declarado_sobre: number | null
           efectivo_sistema: number | null
           estado: Database["public"]["Enums"]["estado_turno"]
+          estado_cuadratura: string | null
           fecha_dlitro: string | null
           id: string
           numero_ultimo_pedido: number | null
@@ -1818,6 +1857,7 @@ export type Database = {
           efectivo_declarado_sobre?: number | null
           efectivo_sistema?: number | null
           estado?: Database["public"]["Enums"]["estado_turno"]
+          estado_cuadratura?: string | null
           fecha_dlitro?: string | null
           id?: string
           numero_ultimo_pedido?: number | null
@@ -1838,6 +1878,7 @@ export type Database = {
           efectivo_declarado_sobre?: number | null
           efectivo_sistema?: number | null
           estado?: Database["public"]["Enums"]["estado_turno"]
+          estado_cuadratura?: string | null
           fecha_dlitro?: string | null
           id?: string
           numero_ultimo_pedido?: number | null
@@ -1969,12 +2010,10 @@ export type Database = {
       calcular_costo_trago: { Args: { p_producto_id: string }; Returns: number }
       get_dlitro_day: { Args: { ts: string }; Returns: string }
       get_turno_abierto: { Args: { p_sucursal_id: string }; Returns: string }
-      get_seguimiento_pedido: { Args: { p_pedido_id: string }; Returns: Json }
       get_user_rol: { Args: { _user_id: string }; Returns: string }
       get_user_sucursal: { Args: { _user_id: string }; Returns: string }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
-      show_limit: { Args: never; Returns: number }
-      show_trgm: { Args: { "": string }; Returns: string[] }
+      is_superadmin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       estado_pedido:

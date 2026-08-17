@@ -1,0 +1,90 @@
+{
+  "all_results": [
+    {
+      "actor": "preparador",
+      "actual": "DENY",
+      "case_name": "estado_only -> allowed_value",
+      "detail": "blocked by spurious vuelto diff -- see comment above this block; fix = add vuelto to excluded columns in guard_pedido_update_v2()",
+      "expected": "ALLOW",
+      "result": "FAIL",
+      "seq": 1
+    },
+    {
+      "actor": "preparador",
+      "actual": "DENY",
+      "case_name": "estado_only -> disallowed_value(cancelado)",
+      "detail": "blocked: cancelado not in {en_preparacion,listo} for preparador",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 2
+    },
+    {
+      "actor": "preparador",
+      "actual": "DENY",
+      "case_name": "estado(allowed) + total(financial, disallowed)",
+      "detail": "blocked: total is outside the allowed column set",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 3
+    },
+    {
+      "actor": "preparador",
+      "actual": "DENY",
+      "case_name": "comanda_impresa only (allowed column, current estado retained)",
+      "detail": "blocked: guard enforces estado in {en_preparacion,listo} unconditionally for preparador",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 4
+    },
+    {
+      "actor": "encargado",
+      "actual": "ALLOW",
+      "case_name": "financial fields, role != preparador",
+      "detail": "guard only restricts caller_role = preparador",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 5
+    },
+    {
+      "actor": "encargado",
+      "actual": "ALLOW",
+      "case_name": "closed turno: observacion_descuadre only",
+      "detail": "annotation-only change on a closed shift succeeded",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 6
+    },
+    {
+      "actor": "encargado",
+      "actual": "DENY",
+      "case_name": "closed turno: efectivo_declarado (correction, disallowed for encargado)",
+      "detail": "blocked: encargado may annotate a closed turno but not correct it",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 7
+    },
+    {
+      "actor": "admin",
+      "actual": "ALLOW",
+      "case_name": "closed turno: efectivo_declarado (correction, role != encargado)",
+      "detail": "guard only restricts caller_role = encargado; admin holds closures.correct",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 8
+    }
+  ],
+  "fail": 1,
+  "failures": [
+    {
+      "actor": "preparador",
+      "actual": "DENY",
+      "case_name": "estado_only -> allowed_value",
+      "detail": "blocked by spurious vuelto diff -- see comment above this block; fix = add vuelto to excluded columns in guard_pedido_update_v2()",
+      "expected": "ALLOW",
+      "result": "FAIL",
+      "seq": 1
+    }
+  ],
+  "pass": 7,
+  "total": 8
+}

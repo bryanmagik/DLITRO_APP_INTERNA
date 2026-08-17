@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
 
     const { data: callerPerfil, error: perfilErr } = await supabaseService
       .from("usuarios")
-      .select("rol")
+      .select("rol, sucursal_id, activo")
       .eq("id", caller.id)
       .single();
 
@@ -80,8 +80,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!["superadmin", "admin"].includes(callerPerfil.rol)) {
-      return new Response(JSON.stringify({ error: "Sin permisos: se requiere rol admin o superadmin" }), {
+    if (!callerPerfil.activo || !["superadmin", "admin", "encargado"].includes(callerPerfil.rol)) {
+      return new Response(JSON.stringify({ error: "Sin permisos para crear usuarios" }), {
         status: 403,
         headers: { ...CORS, "Content-Type": "application/json" },
       });
@@ -104,6 +104,22 @@ Deno.serve(async (req) => {
         status: 400,
         headers: { ...CORS, "Content-Type": "application/json" },
       });
+    }
+
+    const rolesOperacionales = ["tomador_pedidos", "preparador", "despachador"];
+    if (callerPerfil.rol === "encargado") {
+      if (!rolesOperacionales.includes(body.rol)) {
+        return new Response(JSON.stringify({ error: "El encargado solo puede crear roles operacionales" }), {
+          status: 403,
+          headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
+      if (!callerPerfil.sucursal_id || body.sucursal_id !== callerPerfil.sucursal_id) {
+        return new Response(JSON.stringify({ error: "El usuario debe pertenecer a la sucursal del encargado" }), {
+          status: 403,
+          headers: { ...CORS, "Content-Type": "application/json" },
+        });
+      }
     }
 
     // ── Paso 5: crear usuario en Supabase Auth ────────────────────────────
@@ -130,6 +146,8 @@ Deno.serve(async (req) => {
       id: newUserId,
       nombre: body.nombre.trim(),
       apellido: body.apellido?.trim() || null,
+      telefono: body.telefono?.trim() || null,
+      rut: body.rut?.trim() || null,
       rol: body.rol,
       sucursal_id: body.sucursal_id || null,
       activo: true,

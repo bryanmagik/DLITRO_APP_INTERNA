@@ -1,0 +1,104 @@
+RLS v2 MATRIX SUITE — authorization_rls_matrix_v2_matrix.sql
+Target project ref: suscxwjloggmbsqdlgpj (branch: staging-security)
+Executed: 2026-08-17T14:40:23.272Z
+
+TOTAL=95 PASS=95 FAIL=0
+
+No failures.
+
+--- ALL RESULTS ---
+[1] tomador_a SELECT usuarios scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[2] tomador_a SELECT usuarios scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[3] tomador_a SELECT sucursales scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[4] tomador_a SELECT turnos scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[5] tomador_a UPDATE usuarios scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[6] tomador_a UPDATE turnos scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[7] tomador_a DELETE usuarios scope=other_branch expected=DENY actual=DENY -> PASS :: blocked by RLS
+[8] tomador_a INSERT usuarios scope=own_branch expected=DENY actual=DENY -> PASS :: blocked: tomador_pedidos has no users.create permission
+[9] encargado_a SELECT usuarios scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[10] encargado_a SELECT usuarios scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[11] encargado_a UPDATE usuarios scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[12] encargado_a INSERT usuarios scope=own_branch_allowed_role expected=ALLOW actual=ALLOW -> PASS :: encargado created despachador in own branch
+[13] encargado_a INSERT usuarios scope=other_branch expected=DENY actual=DENY -> PASS :: blocked: sucursal_id must equal own sucursal
+[14] encargado_a INSERT usuarios scope=privilege_escalation_role expected=DENY actual=DENY -> PASS :: blocked: encargado insert is limited to operational roles
+[15] despachador_a SELECT sucursales scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[16] despachador_a SELECT turnos scope=own_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[17] despachador_a SELECT usuarios scope=own_branch_other_user expected=DENY actual=DENY -> PASS :: rows_visible=0
+[18] tomador_a SELECT turno_despachadores scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[19] tomador_a SELECT turno_despachadores scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[20] tomador_a SELECT pedido_items scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[21] tomador_a SELECT pedido_items scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[22] tomador_a UPDATE turno_despachadores scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[23] tomador_a UPDATE pedido_items scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[24] tomador_a DELETE turno_despachadores scope=other_branch expected=DENY actual=DENY -> PASS :: blocked by RLS
+[25] tomador_a DELETE pedido_items scope=other_branch expected=DENY actual=DENY -> PASS :: blocked by RLS
+[26] tomador_a INSERT turno_despachadores scope=other_branch expected=DENY actual=DENY -> PASS :: blocked by turno_in_scope
+[27] tomador_a INSERT pedido_items scope=other_branch expected=DENY actual=DENY -> PASS :: blocked by pedido_in_scope
+[28] admin_a SELECT turno_despachadores scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[29] admin_a SELECT pedido_items scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[30] admin_a UPDATE turno_despachadores scope=global expected=ALLOW actual=ALLOW -> PASS :: no-op update set id=id
+[31] admin_a UPDATE pedido_items scope=global expected=ALLOW actual=ALLOW -> PASS :: no-op update set id=id
+[32] encargado_a SELECT stock_sucursal scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[33] encargado_a SELECT stock_sucursal scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[34] encargado_a SELECT pagos_turno scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[35] encargado_a SELECT pagos_turno scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[36] encargado_a SELECT gastos_turno scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[37] encargado_a SELECT gastos_turno scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[38] encargado_a SELECT asistencia scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[39] encargado_a SELECT asistencia scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[40] encargado_a SELECT inventarios_parciales scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[41] encargado_a SELECT inventarios_parciales scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[42] encargado_a SELECT pedidos_logistica scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[43] encargado_a SELECT pedidos_logistica scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[44] encargado_a SELECT configuracion_sucursal scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[45] encargado_a SELECT configuracion_sucursal scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[46] encargado_a UPDATE stock_sucursal scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[47] encargado_a UPDATE pagos_turno scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[48] encargado_a UPDATE gastos_turno scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[49] encargado_a UPDATE asistencia scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[50] encargado_a UPDATE inventarios_parciales scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[51] encargado_a UPDATE pedidos_logistica scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[52] encargado_a UPDATE configuracion_sucursal scope=own_branch_insufficient_permission expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[53] encargado_a UPDATE stock_sucursal scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: no-op update set id=id
+[54] encargado_a UPDATE gastos_turno scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: no-op update set id=id
+[55] admin_a SELECT stock_sucursal scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[56] admin_a SELECT pagos_turno scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[57] admin_a SELECT gastos_turno scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[58] admin_a SELECT asistencia scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[59] admin_a SELECT inventarios_parciales scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[60] admin_a SELECT pedidos_logistica scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[61] admin_a UPDATE configuracion_sucursal scope=global_config_manage expected=ALLOW actual=ALLOW -> PASS :: no-op update set id=id
+[62] tomador_a SELECT inventarios_parciales_items scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[63] tomador_a SELECT inventarios_parciales_items scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[64] tomador_a UPDATE inventarios_parciales_items scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[65] tomador_a DELETE inventarios_parciales_items scope=other_branch expected=DENY actual=DENY -> PASS :: blocked by RLS
+[66] encargado_a SELECT pedidos_logistica_items scope=own_branch expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[67] encargado_a SELECT pedidos_logistica_items scope=other_branch expected=DENY actual=DENY -> PASS :: rows_visible=0
+[68] encargado_a UPDATE pedidos_logistica_items scope=other_branch expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[69] despachador_a SELECT inventarios_parciales_items scope=own_branch_no_permission expected=DENY actual=DENY -> PASS :: rows_visible=0
+[70] despachador_a SELECT pedidos_logistica_items scope=own_branch_no_permission expected=DENY actual=DENY -> PASS :: rows_visible=0
+[71] despachador_a INSERT inventarios_parciales_items scope=own_branch_no_permission expected=DENY actual=DENY -> PASS :: blocked despite missing explicit permission() call in the policy
+[72] despachador_a INSERT pedidos_logistica_items scope=own_branch_no_permission expected=DENY actual=DENY -> PASS :: blocked despite missing explicit permission() call in the policy
+[73] admin_a SELECT clientes scope=admin_only expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[74] admin_a SELECT direcciones_cliente scope=admin_only expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[75] superadmin_a SELECT clientes scope=admin_only_excluded_role expected=DENY actual=DENY -> PASS :: rows_visible=0
+[76] superadmin_a SELECT direcciones_cliente scope=admin_only_excluded_role expected=DENY actual=DENY -> PASS :: rows_visible=0
+[77] superadmin_a SELECT turnos scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[78] superadmin_a SELECT usuarios scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[79] encargado_a SELECT clientes scope=admin_only_excluded_role expected=DENY actual=DENY -> PASS :: rows_visible=0
+[80] jefe_bodega_a SELECT stock_sucursal scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[81] jefe_bodega_a SELECT usuarios scope=no_users_permission expected=DENY actual=DENY -> PASS :: rows_visible=0
+[82] logistica_a SELECT pedidos_logistica scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[83] contador_a SELECT gastos_turno scope=global expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[84] contador_a SELECT stock_sucursal scope=no_stock_permission expected=DENY actual=DENY -> PASS :: rows_visible=0
+[85] admin_a SELECT productos scope=global_catalog expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[86] superadmin_a SELECT productos scope=global_catalog expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[87] encargado_a SELECT productos scope=global_catalog expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[88] tomador_a SELECT productos scope=global_catalog expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[89] preparador_a SELECT productos scope=global_catalog expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[90] despachador_a SELECT productos scope=global_catalog expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[91] jefe_bodega_a SELECT productos scope=global_catalog expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[92] logistica_a SELECT productos scope=global_catalog expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[93] contador_a SELECT productos scope=global_catalog expected=ALLOW actual=ALLOW -> PASS :: rows_visible=1
+[94] encargado_a UPDATE productos scope=no_catalog_manage expected=DENY actual=DENY -> PASS :: no-op update set id=id
+[95] admin_a UPDATE productos scope=catalog_manage expected=ALLOW actual=ALLOW -> PASS :: no-op update set id=id

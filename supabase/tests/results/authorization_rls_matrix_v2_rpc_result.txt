@@ -1,0 +1,43 @@
+RLS v2 RPC/FUNCTIONS SUITE — authorization_rls_matrix_v2_rpc.sql
+Target project ref: suscxwjloggmbsqdlgpj (branch: staging-security)
+Executed: 2026-08-17T14:41:22.970Z
+
+TOTAL=34 PASS=34 FAIL=0
+
+No failures.
+
+--- ALL RESULTS ---
+[1] anon :: EXECUTE grant on private.current_app_role expected=NOT_GRANTED actual=NOT_GRANTED -> PASS :: anon must never execute authorization helpers
+[2] authenticated :: EXECUTE grant on private.current_app_role expected=GRANTED actual=GRANTED -> PASS :: authenticated is expected to execute this helper (used inside v2 policies)
+[3] anon :: EXECUTE grant on private.current_sucursal_id expected=NOT_GRANTED actual=NOT_GRANTED -> PASS :: anon must never execute authorization helpers
+[4] authenticated :: EXECUTE grant on private.current_sucursal_id expected=GRANTED actual=GRANTED -> PASS :: authenticated is expected to execute this helper (used inside v2 policies)
+[5] anon :: EXECUTE grant on private.has_permission expected=NOT_GRANTED actual=NOT_GRANTED -> PASS :: anon must never execute authorization helpers
+[6] authenticated :: EXECUTE grant on private.has_permission expected=GRANTED actual=GRANTED -> PASS :: authenticated is expected to execute this helper (used inside v2 policies)
+[7] anon :: EXECUTE grant on private.has_global_scope expected=NOT_GRANTED actual=NOT_GRANTED -> PASS :: anon must never execute authorization helpers
+[8] authenticated :: EXECUTE grant on private.has_global_scope expected=GRANTED actual=GRANTED -> PASS :: authenticated is expected to execute this helper (used inside v2 policies)
+[9] anon :: EXECUTE grant on private.can_access_sucursal expected=NOT_GRANTED actual=NOT_GRANTED -> PASS :: anon must never execute authorization helpers
+[10] authenticated :: EXECUTE grant on private.can_access_sucursal expected=GRANTED actual=GRANTED -> PASS :: authenticated is expected to execute this helper (used inside v2 policies)
+[11] anon :: EXECUTE grant on private.turno_in_scope expected=NOT_GRANTED actual=NOT_GRANTED -> PASS :: anon must never execute authorization helpers
+[12] authenticated :: EXECUTE grant on private.turno_in_scope expected=GRANTED actual=GRANTED -> PASS :: authenticated is expected to execute this helper (used inside v2 policies)
+[13] anon :: EXECUTE grant on private.turno_is_open expected=NOT_GRANTED actual=NOT_GRANTED -> PASS :: anon must never execute authorization helpers
+[14] authenticated :: EXECUTE grant on private.turno_is_open expected=GRANTED actual=GRANTED -> PASS :: authenticated is expected to execute this helper (used inside v2 policies)
+[15] anon :: EXECUTE grant on private.pedido_in_scope expected=NOT_GRANTED actual=NOT_GRANTED -> PASS :: anon must never execute authorization helpers
+[16] authenticated :: EXECUTE grant on private.pedido_in_scope expected=GRANTED actual=GRANTED -> PASS :: authenticated is expected to execute this helper (used inside v2 policies)
+[17] anon :: EXECUTE grant on public.is_admin expected=NOT_GRANTED actual=NOT_GRANTED -> PASS :: anon must never execute authorization helpers
+[18] authenticated :: EXECUTE grant on public.is_admin expected=GRANTED actual=GRANTED -> PASS :: authenticated is expected to execute this helper (used inside v2 policies)
+[19] authenticated :: EXECUTE grant on public.get_user_rol(uuid) [legacy, self-check guarded] expected=GRANTED actual=GRANTED -> PASS :: re-granted by authorization_rls_v1_safe_identity_helpers.sql after adding the self-check guard
+[20] authenticated :: EXECUTE grant on public.get_user_sucursal(uuid) [legacy, self-check guarded] expected=GRANTED actual=GRANTED -> PASS :: re-granted by authorization_rls_v1_safe_identity_helpers.sql after adding the self-check guard
+[21] despachador :: has_permission(users.manage) as low-priv role expected=false actual=false -> PASS :: must not report a permission despachador does not hold
+[22] despachador :: has_permission(catalog.read) as low-priv role expected=true actual=true -> PASS :: despachador does hold this one -- sanity check the function is not just always-false
+[23] despachador :: can_access_sucursal(other branch) as branch-scoped role expected=false actual=false -> PASS :: despachador is not global scope; must not reach Branch B
+[24] despachador :: can_access_sucursal(own branch) expected=true actual=true -> PASS :: sanity check
+[25] despachador :: get_user_rol(<other real admin id>) -- enumeration probe expected=NULL actual=NULL -> PASS :: must return NULL: the function only ever resolves the callers own row
+[26] despachador :: get_user_sucursal(<other real admin id>) -- enumeration probe expected=NULL actual=NULL -> PASS :: must return NULL: the function only ever resolves the callers own row
+[27] despachador :: get_user_rol(self) expected=despachador actual=despachador -> PASS :: sanity check: self-check passes and reports the true role
+[28] despachador :: is_admin(<other real admin id>) -- enumeration probe expected=false actual=false -> PASS :: is_admin must only ever answer about the caller, never about an arbitrary uuid argument
+[29] despachador :: is_admin(self) while not admin expected=false actual=false -> PASS :: sanity check: self-check passes but role is not admin
+[30] admin :: is_admin(self) while admin expected=true actual=true -> PASS :: sanity check: real admin, self-check passes
+[31] admin :: is_admin(<other users id>) called by a real admin -- enumeration probe expected=false actual=false -> PASS :: even a real admin cannot use is_admin() to ask about someone else -- function design is self-check only, by argument, not by caller role
+[32] admin :: has_permission(users.manage) as admin expected=true actual=true -> PASS :: sanity check
+[33] admin :: can_access_sucursal(other branch) as global-scope role expected=true actual=true -> PASS :: admin is global scope by has_global_scope()
+[34] despachador :: direct SELECT on private.role_permissions expected=DENY actual=DENY -> PASS :: blocked: no table grant on private.role_permissions for authenticated

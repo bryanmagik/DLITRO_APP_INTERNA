@@ -71,6 +71,7 @@ const menuPorRol: Record<Rol, Item[]> = {
     { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
     { title: "Panel de Auditoría", url: "/admin/auditoria", icon: History },
     { title: "Sucursales", url: "/admin/sucursales", icon: Store },
+    { title: "Pedidos", url: "/admin/pedidos", icon: ClipboardList },
     { title: "Productos", url: "/admin/productos", icon: ShoppingBag },
     { title: "Costos", url: "/admin/costos", icon: DollarSign },
     { title: "Recetas", url: "/admin/recetas", icon: BookOpen },

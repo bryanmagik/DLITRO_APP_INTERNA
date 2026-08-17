@@ -1,0 +1,50 @@
+RLS v2 GUARD-TRIGGER SUITE — authorization_rls_matrix_v2_guards.sql
+Run AFTER applying migration 20260817144833_fix_guard_pedido_update_v2_vuelto_diff.sql
+Target project ref: suscxwjloggmbsqdlgpj (branch: staging-security)
+Executed: 2026-08-17T14:55:27.716Z
+
+TOTAL=8 PASS=7 FAIL=1
+
+--- COMPARISON WITH PRE-FIX RUN (authorization_rls_matrix_v2_guards_result.json) ---
+seq 1 (preparador estado_only -> allowed_value): FAIL(DENY) -> PASS(ALLOW)  [TARGET BUG FIXED]
+seq 4 (preparador comanda_impresa only, current estado retained): PASS(DENY) -> FAIL(ALLOW)  [NEW — see analysis]
+seq 2,3,5,6,7,8: unchanged, still PASS
+
+--- FAILURES ---
+{
+  "actor": "preparador",
+  "actual": "ALLOW",
+  "case_name": "comanda_impresa only (allowed column, current estado retained)",
+  "detail": "unexpected: current estado is tomado, not in {en_preparacion,listo}",
+  "expected": "DENY",
+  "result": "FAIL",
+  "seq": 4
+}
+
+ANALYSIS of seq 4 (flagged per STOP condition, human review required before final classification):
+This case runs in the SAME transaction, sequentially after seq 1. Before the fix, seq 1 always
+raised an exception (vuelto bug) and its UPDATE was rolled back by the enclosing exception block,
+so the fixture pedido stayed at estado='tomado' when seq 4 ran its comanda_impresa-only update.
+With estado still 'tomado' (not in the allowed set), the guard's second check correctly denied it.
+
+After the fix, seq 1 succeeds and legitimately advances the SAME fixture pedido to estado='en_preparacion'.
+When seq 4 then updates comanda_impresa only (an already-allowed column, unrelated to estado), NEW.estado
+equals OLD.estado = 'en_preparacion', which IS in the allowed set -- so the guard correctly does not block it.
+
+No authorization boundary was weakened: comanda_impresa was already an explicitly allowed column for
+preparador in the ORIGINAL v2 design (excluded from the diff check since the migration was first written);
+the guard never blocked touching it because of WHICH column changed, only because of the resulting estado
+value. No cross-branch, no financial field, no privilege escalation, no other role affected. This reads as a
+TEST/FIXTURE ordering dependency (seq 4's hardcoded DENY expectation implicitly assumed seq 1 would keep
+failing) rather than a live security bypass -- but per explicit instruction this is reported as a STOP
+condition for human classification, not resolved unilaterally.
+
+--- ALL RESULTS ---
+[1] preparador :: estado_only -> allowed_value expected=ALLOW actual=ALLOW -> PASS :: estado-only change to en_preparacion succeeded
+[2] preparador :: estado_only -> disallowed_value(cancelado) expected=DENY actual=DENY -> PASS :: blocked: cancelado not in {en_preparacion,listo} for preparador
+[3] preparador :: estado(allowed) + total(financial, disallowed) expected=DENY actual=DENY -> PASS :: blocked: total is outside the allowed column set
+[4] preparador :: comanda_impresa only (allowed column, current estado retained) expected=DENY actual=ALLOW -> FAIL :: unexpected: current estado is tomado, not in {en_preparacion,listo}
+[5] encargado :: financial fields, role != preparador expected=ALLOW actual=ALLOW -> PASS :: guard only restricts caller_role = preparador
+[6] encargado :: closed turno: observacion_descuadre only expected=ALLOW actual=ALLOW -> PASS :: annotation-only change on a closed shift succeeded
+[7] encargado :: closed turno: efectivo_declarado (correction, disallowed for encargado) expected=DENY actual=DENY -> PASS :: blocked: encargado may annotate a closed turno but not correct it
+[8] admin :: closed turno: efectivo_declarado (correction, role != encargado) expected=ALLOW actual=ALLOW -> PASS :: guard only restricts caller_role = encargado; admin holds closures.correct

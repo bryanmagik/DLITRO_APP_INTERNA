@@ -1,0 +1,143 @@
+{
+  "all_results": [
+    {
+      "actor": "tomador_a",
+      "actual": "ALLOW",
+      "case_name": "tomado: modificacion de item",
+      "detail": "item actualizado, pedido tomado editable",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 1
+    },
+    {
+      "actor": "tomador_a",
+      "actual": "ALLOW",
+      "case_name": "en_preparacion: modificacion de item",
+      "detail": "item actualizado, pedido en_preparacion editable",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 2
+    },
+    {
+      "actor": "tomador_a",
+      "actual": "ALLOW",
+      "case_name": "listo: modificacion operacional de item",
+      "detail": "item actualizado sobre pedido listo",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 3
+    },
+    {
+      "actor": "tomador_a",
+      "actual": "en_preparacion",
+      "case_name": "listo -> en_preparacion: estado final",
+      "detail": "estado del pedido tras la modificacion operacional",
+      "expected": "en_preparacion",
+      "result": "PASS",
+      "seq": 4
+    },
+    {
+      "actor": "tomador_a",
+      "actual": "true",
+      "case_name": "listo -> en_preparacion: flag requiere_revision_cocina",
+      "detail": "senal visible para cocina",
+      "expected": "true",
+      "result": "PASS",
+      "seq": 5
+    },
+    {
+      "actor": "tomador_a",
+      "actual": "true",
+      "case_name": "listo -> en_preparacion: fila de auditoria en log_cambios_pedido",
+      "detail": "1 fila(s) de auditoria encontradas",
+      "expected": "true",
+      "result": "PASS",
+      "seq": 6
+    },
+    {
+      "actor": "tomador_a",
+      "actual": "DENY",
+      "case_name": "en_despacho: modificacion de item",
+      "detail": "bloqueado por guard_pedido_items_lifecycle_v2",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 7
+    },
+    {
+      "actor": "tomador_a",
+      "actual": "ALLOW",
+      "case_name": "en_despacho: modificacion de campo de pedidos (notas)",
+      "detail": "pedidos sigue editable en despacho (reconciliacion de entrega)",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 8
+    },
+    {
+      "actor": "tomador_a",
+      "actual": "DENY",
+      "case_name": "entregado: modificacion de pedidos (no-admin)",
+      "detail": "bloqueado: terminal lock en guard_pedido_update_v2",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 9
+    },
+    {
+      "actor": "tomador_a",
+      "actual": "DENY",
+      "case_name": "entregado: modificacion de item (no-admin)",
+      "detail": "bloqueado: terminal lock en guard_pedido_items_lifecycle_v2",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 10
+    },
+    {
+      "actor": "tomador_a",
+      "actual": "DENY",
+      "case_name": "cancelado: modificacion de pedidos (no-admin)",
+      "detail": "bloqueado: terminal lock en guard_pedido_update_v2",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 11
+    },
+    {
+      "actor": "admin",
+      "actual": "ALLOW",
+      "case_name": "entregado: modificacion de pedidos (admin)",
+      "detail": "admin puede corregir un pedido entregado (PedidosAdminPage)",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 12
+    },
+    {
+      "actor": "admin",
+      "actual": "ALLOW",
+      "case_name": "entregado: modificacion de item (admin)",
+      "detail": "admin puede corregir items de un pedido entregado",
+      "expected": "ALLOW",
+      "result": "PASS",
+      "seq": 13
+    },
+    {
+      "actor": "preparador_a",
+      "actual": "DENY",
+      "case_name": "campo financiero: preparador modifica total/descuento",
+      "detail": "bloqueado por guard_pedido_update_v2 (diff de columnas)",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 14
+    },
+    {
+      "actor": "tomador_a",
+      "actual": "DENY",
+      "case_name": "cross-branch: modificacion de item de otra sucursal",
+      "detail": "bloqueado: 0 filas (RLS pedido_in_scope)",
+      "expected": "DENY",
+      "result": "PASS",
+      "seq": 15
+    }
+  ],
+  "fail": 0,
+  "failures": [],
+  "pass": 15,
+  "total": 15
+}

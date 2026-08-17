@@ -1,0 +1,4 @@
+RPC — REGRESSION CHECK after 20260817164101_order_modification_lifecycle_rule.sql
+Executed: 2026-08-17T16:47:44.853Z
+TOTAL=34 PASS=34 FAIL=0
+No regression.
