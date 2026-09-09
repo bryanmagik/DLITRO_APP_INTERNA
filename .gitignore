@@ -146,6 +146,12 @@ vite.config.ts.timestamp-*
 # Local database inspection artifacts
 .local/
 
+# Supabase CLI link/runtime state (environment-specific)
+supabase/.temp/
+
+# Locally generated QA exports
+outputs/
+
 # Tauri updater private keys
 *.key
 !.tauri/*.key.pub
