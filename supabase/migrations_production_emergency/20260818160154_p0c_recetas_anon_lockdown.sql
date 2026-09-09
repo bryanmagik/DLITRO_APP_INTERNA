@@ -1,0 +1,35 @@
+-- PRODUCTION EMERGENCY HOTFIX — P0-C ONLY.
+--
+-- Target: production project ref uwymxjmyasnlmkitzvej ("main" branch / "DLITRO ULTIMATE").
+-- This file is intentionally OUTSIDE supabase/migrations/ and must never be applied to
+-- staging-security (suscxwjloggmbsqdlgpj). Do not move or copy this file into
+-- supabase/migrations/.
+--
+-- Scope (P0-C, follow-up to P0-A/P0-B, found during RLS v2 production-specific
+-- migration validation): public.recetas was missed by both P0-A (12-table scope)
+-- and P0-B (25-table scope). Nothing else. Explicitly NOT included:
+--   - any change to authenticated's existing grants
+--   - any change to service_role
+--   - any RLS enable/disable
+--   - any policy, function, or trigger change
+--   - any other table
+--
+-- Precheck evidence (read-only queries against production, same session):
+--   - public.recetas: relrowsecurity = true, relforcerowsecurity = false.
+--   - One existing policy, "authenticated_read_recetas" (cmd ALL, roles {public},
+--     using auth.role() = 'authenticated'::text, no with_check). This already
+--     denies anon SELECT/INSERT/UPDATE/DELETE at the RLS layer (auth.role() for
+--     anon is 'anon', never 'authenticated'). TRUNCATE is never subject to RLS
+--     in PostgreSQL, so anon's TRUNCATE grant is directly exploitable regardless
+--     of this policy — the actual live exposure today.
+--   - anon currently holds DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE,
+--     UPDATE on public.recetas.
+--   - authenticated currently holds the same set (untouched by this hotfix).
+--   - No Edge Function references "recetas" anywhere (grep over
+--     supabase/functions/, zero matches). Only three admin-only frontend pages
+--     read it (RecetasPage.tsx, ProductosPage.tsx, CostosPage.tsx), all reachable
+--     only via authenticated admin/superadmin routes — no public/anon route
+--     (/, /login, /seguimiento/:pedidoId) references it. Zero legitimate anon
+--     dependency found.
+
+revoke select, insert, update, delete, truncate on public.recetas from anon;

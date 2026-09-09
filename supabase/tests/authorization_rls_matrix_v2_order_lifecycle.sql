@@ -74,10 +74,10 @@ insert into public.pedidos (id, turno_id, sucursal_id, tomador_id, cliente_nombr
   ('91111111-0000-4000-8000-000000000003', '9ddddddd-0000-4000-8000-00000000a001', '9aaaaaaa-0000-4000-8000-00000000000a', '9bbbbbbb-0000-4000-8000-000000000003', 'Case listo revert',        'retiro', 'listo',         1000, 0, 0, 1000),
   ('91111111-0000-4000-8000-000000000004', '9ddddddd-0000-4000-8000-00000000a001', '9aaaaaaa-0000-4000-8000-00000000000a', '9bbbbbbb-0000-4000-8000-000000000003', 'Case despacho items deny', 'retiro', 'en_despacho',   1000, 0, 0, 1000),
   ('91111111-0000-4000-8000-000000000005', '9ddddddd-0000-4000-8000-00000000a001', '9aaaaaaa-0000-4000-8000-00000000000a', '9bbbbbbb-0000-4000-8000-000000000003', 'Case despacho pedido ok',  'retiro', 'en_despacho',   1000, 0, 0, 1000),
-  ('91111111-0000-4000-8000-000000000006', '9ddddddd-0000-4000-8000-00000000a001', '9aaaaaaa-0000-4000-8000-00000000000a', '9bbbbbbb-0000-4000-8000-000000000003', 'Case entregado pedido deny','retiro','entregado',     1000, 0, 0, 1000),
-  ('91111111-0000-4000-8000-000000000007', '9ddddddd-0000-4000-8000-00000000a001', '9aaaaaaa-0000-4000-8000-00000000000a', '9bbbbbbb-0000-4000-8000-000000000003', 'Case entregado items deny', 'retiro', 'entregado',    1000, 0, 0, 1000),
+  ('91111111-0000-4000-8000-000000000006', '9ddddddd-0000-4000-8000-00000000a001', '9aaaaaaa-0000-4000-8000-00000000000a', '9bbbbbbb-0000-4000-8000-000000000003', 'Case entregado pedido deny','retiro','en_preparacion',1000, 0, 0, 1000),
+  ('91111111-0000-4000-8000-000000000007', '9ddddddd-0000-4000-8000-00000000a001', '9aaaaaaa-0000-4000-8000-00000000000a', '9bbbbbbb-0000-4000-8000-000000000003', 'Case entregado items deny', 'retiro', 'en_preparacion',1000, 0, 0, 1000),
   ('91111111-0000-4000-8000-000000000008', '9ddddddd-0000-4000-8000-00000000a001', '9aaaaaaa-0000-4000-8000-00000000000a', '9bbbbbbb-0000-4000-8000-000000000003', 'Case entregado admin pedido','retiro','entregado',    1000, 0, 0, 1000),
-  ('91111111-0000-4000-8000-000000000009', '9ddddddd-0000-4000-8000-00000000a001', '9aaaaaaa-0000-4000-8000-00000000000a', '9bbbbbbb-0000-4000-8000-000000000003', 'Case entregado admin items', 'retiro', 'entregado',   1000, 0, 0, 1000),
+  ('91111111-0000-4000-8000-000000000009', '9ddddddd-0000-4000-8000-00000000a001', '9aaaaaaa-0000-4000-8000-00000000000a', '9bbbbbbb-0000-4000-8000-000000000003', 'Case entregado admin items', 'retiro', 'en_preparacion',1000, 0, 0, 1000),
   ('9111111a-0000-4000-8000-00000000000a', '9ddddddd-0000-4000-8000-00000000a001', '9aaaaaaa-0000-4000-8000-00000000000a', '9bbbbbbb-0000-4000-8000-000000000003', 'Case cancelado deny',      'retiro', 'cancelado',     1000, 0, 0, 1000),
   ('9111111a-0000-4000-8000-00000000000b', '9ddddddd-0000-4000-8000-00000000a001', '9aaaaaaa-0000-4000-8000-00000000000a', '9bbbbbbb-0000-4000-8000-000000000003', 'Case financial deny',      'retiro', 'en_preparacion',1000, 0, 0, 1000),
   ('9111111a-0000-4000-8000-00000000000c', '9ddddddd-0000-4000-8000-00000000b001', '9aaaaaaa-0000-4000-8000-00000000000b', '9bbbbbbb-0000-4000-8000-000000000005', 'Case cross-branch deny',   'retiro', 'en_preparacion',1000, 0, 0, 1000);
@@ -90,6 +90,16 @@ insert into public.pedido_items (id, pedido_id, producto_id, cantidad, precio_un
   ('92222222-0000-4000-8000-000000000007', '91111111-0000-4000-8000-000000000007', '9ccccccc-0000-4000-8000-000000000002', 1, 1000, 1000),
   ('92222222-0000-4000-8000-000000000009', '91111111-0000-4000-8000-000000000009', '9ccccccc-0000-4000-8000-000000000002', 1, 1000, 1000),
   ('9222222a-0000-4000-8000-00000000000c', '9111111a-0000-4000-8000-00000000000c', '9ccccccc-0000-4000-8000-000000000002', 1, 1000, 1000);
+
+update public.pedidos set metodo_pago = 'transferencia'
+where id = '91111111-0000-4000-8000-000000000006';
+
+insert into public.pagos_turno (id, turno_id, pedido_id, metodo, monto)
+values ('93333333-0000-4000-8000-000000000006', '9ddddddd-0000-4000-8000-00000000a001',
+        '91111111-0000-4000-8000-000000000006', 'transferencia', 1000);
+
+update public.pedidos set estado = 'entregado'
+where id in ('91111111-0000-4000-8000-000000000006', '91111111-0000-4000-8000-000000000007', '91111111-0000-4000-8000-000000000009');
 
 create function pg_temp.as_actor(p_user_id uuid) returns void language sql as $$
   select set_config('request.jwt.claims', jsonb_build_object('sub', p_user_id::text, 'role', 'authenticated')::text, true);
@@ -120,6 +130,81 @@ begin
       case when v_count = 1 then 'item actualizado, pedido tomado editable' else 'bloqueado inesperadamente' end);
   exception when insufficient_privilege then
     call pg_temp.record('tomado_a', 'tomado: modificacion de item', 'DENY', 'ALLOW', 'bloqueado por excepcion inesperadamente');
+  end;
+end $$;
+
+-- Explicit correction RPC: reason required, state remains delivered, payment
+-- ledger is synchronized, and each changed field gets an append-only event.
+do $$
+begin
+  begin
+    perform public.corregir_pedido_entregado(
+      '91111111-0000-4000-8000-000000000006', 'efectivo', 'nota corregida', '');
+    call pg_temp.record('tomador_a', 'entregado: correccion exige motivo', 'ALLOW', 'DENY', 'acepto motivo vacio -- BUG');
+  exception when invalid_parameter_value then
+    call pg_temp.record('tomador_a', 'entregado: correccion exige motivo', 'DENY', 'DENY', 'motivo vacio rechazado');
+  end;
+end $$;
+
+select public.corregir_pedido_entregado(
+  '91111111-0000-4000-8000-000000000006', 'efectivo', 'nota corregida', 'Forma de pago incorrecta');
+
+reset role;
+do $$
+declare v_pedido public.pedidos; v_pago public.metodo_pago; v_logs int; v_user_logs int; v_branch_logs int;
+begin
+  select * into v_pedido from public.pedidos where id = '91111111-0000-4000-8000-000000000006';
+  select metodo into v_pago from public.pagos_turno where pedido_id = v_pedido.id;
+  select count(*) into v_logs from public.log_cambios_pedido
+   where pedido_id = v_pedido.id and tipo_evento = 'pedido_corregido_post_cierre';
+  select count(*) into v_user_logs from public.log_cambios_pedido
+   where pedido_id = v_pedido.id and usuario_id = '9bbbbbbb-0000-4000-8000-000000000003';
+  select count(*) into v_branch_logs from public.log_cambios_pedido
+   where pedido_id = v_pedido.id and sucursal_id = '9aaaaaaa-0000-4000-8000-00000000000a';
+  call pg_temp.record('tomador_a', 'entregado: mantiene estado', v_pedido.estado::text, 'entregado', 'no reabre flujo operacional');
+  call pg_temp.record('tomador_a', 'entregado: corrige forma de pago', v_pedido.metodo_pago::text, 'efectivo', 'pedidos sincronizado');
+  call pg_temp.record('tomador_a', 'entregado: sincroniza pagos sin cambiar monto', v_pago::text, 'efectivo', 'pagos_turno sincronizado');
+  call pg_temp.record('tomador_a', 'entregado: un evento por campo', v_logs::text, '2', 'metodo_pago y notas auditados por separado');
+  call pg_temp.record('tomador_a', 'auditoria: identifica usuario', v_user_logs::text, '3', 'metodo, notas y composicion identifican auth.uid');
+  call pg_temp.record('tomador_a', 'auditoria: identifica sucursal', v_branch_logs::text, '3', 'metodo, notas y composicion identifican sucursal');
+end $$;
+set local role authenticated;
+select pg_temp.as_actor('9bbbbbbb-0000-4000-8000-000000000003');
+
+select public.corregir_pedido_entregado(
+  '91111111-0000-4000-8000-000000000006', 'transferencia', 'nota corregida', 'Reversion de prueba');
+
+reset role;
+do $$
+declare v_count int;
+begin
+  select count(*) into v_count from public.log_cambios_pedido
+   where pedido_id = '91111111-0000-4000-8000-000000000006'
+     and campo = 'metodo_pago' and tipo_evento = 'pedido_corregido_post_cierre';
+  call pg_temp.record('tomador_a', 'auditoria: dos correcciones son eventos independientes', v_count::text, '2', 'historial append-only');
+end $$;
+set local role authenticated;
+
+select pg_temp.as_actor('9bbbbbbb-0000-4000-8000-000000000005');
+do $$
+begin
+  begin
+    perform public.corregir_pedido_entregado(
+      '91111111-0000-4000-8000-000000000006', 'efectivo', 'ataque cross branch', 'prueba');
+    call pg_temp.record('tomador_b', 'entregado: otra sucursal no puede corregir', 'ALLOW', 'DENY', 'IDOR -- BUG');
+  exception when insufficient_privilege then
+    call pg_temp.record('tomador_b', 'entregado: otra sucursal no puede corregir', 'DENY', 'DENY', 'RLS/alcance de sucursal');
+  end;
+end $$;
+
+select pg_temp.as_actor('9bbbbbbb-0000-4000-8000-000000000003');
+do $$
+begin
+  begin
+    update public.pedidos set total = 9999 where id = '91111111-0000-4000-8000-000000000006';
+    call pg_temp.record('tomador_a', 'entregado: no modifica total', 'ALLOW', 'DENY', 'total modificado -- BUG');
+  exception when insufficient_privilege then
+    call pg_temp.record('tomador_a', 'entregado: no modifica total', 'DENY', 'DENY', 'guard de lista blanca');
   end;
 end $$;
 
@@ -242,7 +327,8 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- Admin exemption: entregado sigue editable para admin/superadmin.
+-- Delivered orders are now corrected only through corregir_pedido_entregado;
+-- direct writes (including admin) cannot bypass the allow-list or audit.
 -- ---------------------------------------------------------------------------
 
 select pg_temp.as_actor('9bbbbbbb-0000-4000-8000-000000000001'); -- admin
@@ -253,10 +339,10 @@ begin
   begin
     update public.pedidos set notas = 'correccion admin post-entrega' where id = '91111111-0000-4000-8000-000000000008';
     get diagnostics v_count = row_count;
-    call pg_temp.record('admin', 'entregado: modificacion de pedidos (admin)', case when v_count = 1 then 'ALLOW' else 'DENY' end, 'ALLOW',
-      case when v_count = 1 then 'admin puede corregir un pedido entregado (PedidosAdminPage)' else 'bloqueado inesperadamente' end);
+    call pg_temp.record('admin', 'entregado: modificacion directa de pedidos (admin)', case when v_count = 1 then 'ALLOW' else 'DENY' end, 'DENY',
+      case when v_count = 1 then 'admin omitio el flujo de correccion -- SECURITY BUG' else 'bloqueado correctamente' end);
   exception when insufficient_privilege then
-    call pg_temp.record('admin', 'entregado: modificacion de pedidos (admin)', 'DENY', 'ALLOW', 'bloqueado por excepcion inesperadamente -- revisar excepcion admin en guard_pedido_update_v2');
+    call pg_temp.record('admin', 'entregado: modificacion directa de pedidos (admin)', 'DENY', 'DENY', 'debe usar la RPC auditada');
   end;
 end $$;
 
@@ -266,10 +352,10 @@ begin
   begin
     update public.pedido_items set cantidad = 4 where id = '92222222-0000-4000-8000-000000000009';
     get diagnostics v_count = row_count;
-    call pg_temp.record('admin', 'entregado: modificacion de item (admin)', case when v_count = 1 then 'ALLOW' else 'DENY' end, 'ALLOW',
-      case when v_count = 1 then 'admin puede corregir items de un pedido entregado' else 'bloqueado inesperadamente' end);
+    call pg_temp.record('admin', 'entregado: modificacion de item (admin)', case when v_count = 1 then 'ALLOW' else 'DENY' end, 'DENY',
+      case when v_count = 1 then 'admin modifico comanda entregada -- SECURITY BUG' else 'bloqueado correctamente' end);
   exception when insufficient_privilege then
-    call pg_temp.record('admin', 'entregado: modificacion de item (admin)', 'DENY', 'ALLOW', 'bloqueado por excepcion inesperadamente -- revisar excepcion admin en guard_pedido_items_lifecycle_v2');
+    call pg_temp.record('admin', 'entregado: modificacion de item (admin)', 'DENY', 'DENY', 'comanda entregada inmutable');
   end;
 end $$;
 

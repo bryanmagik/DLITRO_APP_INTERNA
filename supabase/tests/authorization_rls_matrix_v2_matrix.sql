@@ -445,8 +445,17 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- SECTION 5 — Admin vs superadmin. Business rule under test: superadmin must
--- NOT have clients.read/clients.manage (v2 migration's own invariant check).
+-- SECTION 5 — Admin vs superadmin.
+--
+-- UPDATED by 20260818125656_authorization_rls_matrix_v2_business_hierarchy_fix.sql:
+-- the official hierarchy decision is superadmin >= admin on every operational/
+-- administrative permission unless an exception is explicitly documented. No
+-- exception was documented for the customer directory, so it was closed as a
+-- hierarchy bug: superadmin now DOES have clients.read/clients.manage, same as
+-- admin. This intentionally reverses the original v2 migration's invariant
+-- (which asserted the opposite). See supabase/tests/authorization_rls_matrix_v2_
+-- business_hierarchy_fix.sql SECTION 4 for the exhaustive admin-vs-superadmin
+-- hierarchy check across every permission, not just this one table pair.
 -- ---------------------------------------------------------------------------
 
 select pg_temp.as_actor('fbbbbbbb-0000-4000-8000-000000000001'); -- admin_a
@@ -454,8 +463,8 @@ select pg_temp.chk_select('admin_a', 'clientes', 'admin_only', 'fcccccc1-0000-40
 select pg_temp.chk_select('admin_a', 'direcciones_cliente', 'admin_only', 'fcccccc1-0000-4000-8000-000000000002', 'ALLOW');
 
 select pg_temp.as_actor('fbbbbbbb-0000-4000-8000-000000000002'); -- superadmin_a
-select pg_temp.chk_select('superadmin_a', 'clientes', 'admin_only_excluded_role', 'fcccccc1-0000-4000-8000-000000000001', 'DENY');
-select pg_temp.chk_select('superadmin_a', 'direcciones_cliente', 'admin_only_excluded_role', 'fcccccc1-0000-4000-8000-000000000002', 'DENY');
+select pg_temp.chk_select('superadmin_a', 'clientes', 'hierarchy_fix_superadmin_now_included', 'fcccccc1-0000-4000-8000-000000000001', 'ALLOW');
+select pg_temp.chk_select('superadmin_a', 'direcciones_cliente', 'hierarchy_fix_superadmin_now_included', 'fcccccc1-0000-4000-8000-000000000002', 'ALLOW');
 -- Sanity: superadmin IS still global-scope for ordinary branch data.
 select pg_temp.chk_select('superadmin_a', 'turnos', 'global', 'feeeeeee-0000-4000-8000-00000000b001', 'ALLOW');
 select pg_temp.chk_select('superadmin_a', 'usuarios', 'global', 'fbbbbbbb-0000-4000-8000-00000000000b', 'ALLOW');

@@ -630,8 +630,12 @@ export type Database = {
         Row: {
           campo: string
           created_at: string | null
+          estado_pedido: Database["public"]["Enums"]["estado_pedido"] | null
           id: string
+          motivo: string | null
           pedido_id: string | null
+          sucursal_id: string | null
+          tipo_evento: string | null
           usuario_id: string | null
           valor_anterior: string | null
           valor_nuevo: string | null
@@ -639,8 +643,12 @@ export type Database = {
         Insert: {
           campo: string
           created_at?: string | null
+          estado_pedido?: Database["public"]["Enums"]["estado_pedido"] | null
           id?: string
+          motivo?: string | null
           pedido_id?: string | null
+          sucursal_id?: string | null
+          tipo_evento?: string | null
           usuario_id?: string | null
           valor_anterior?: string | null
           valor_nuevo?: string | null
@@ -648,8 +656,12 @@ export type Database = {
         Update: {
           campo?: string
           created_at?: string | null
+          estado_pedido?: Database["public"]["Enums"]["estado_pedido"] | null
           id?: string
+          motivo?: string | null
           pedido_id?: string | null
+          sucursal_id?: string | null
+          tipo_evento?: string | null
           usuario_id?: string | null
           valor_anterior?: string | null
           valor_nuevo?: string | null
@@ -660,6 +672,13 @@ export type Database = {
             columns: ["pedido_id"]
             isOneToOne: false
             referencedRelation: "pedidos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "log_cambios_pedido_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
             referencedColumns: ["id"]
           },
           {
@@ -1024,10 +1043,12 @@ export type Database = {
           diferencia: number | null
           distancia_km: number | null
           id: string
+          motivo: string | null
           numero_pedido: number | null
           operacion: string
           pedido_id: string
           sucursal_id: string
+          estado_pedido: Database["public"]["Enums"]["estado_pedido"] | null
           turno_id: string
           usuario_id: string | null
         }
@@ -1039,10 +1060,12 @@ export type Database = {
           diferencia?: number | null
           distancia_km?: number | null
           id?: string
+          motivo?: string | null
           numero_pedido?: number | null
           operacion: string
           pedido_id: string
           sucursal_id: string
+          estado_pedido?: Database["public"]["Enums"]["estado_pedido"] | null
           turno_id: string
           usuario_id?: string | null
         }
@@ -1054,10 +1077,12 @@ export type Database = {
           diferencia?: number | null
           distancia_km?: number | null
           id?: string
+          motivo?: string | null
           numero_pedido?: number | null
           operacion?: string
           pedido_id?: string
           sucursal_id?: string
+          estado_pedido?: Database["public"]["Enums"]["estado_pedido"] | null
           turno_id?: string
           usuario_id?: string | null
         }
@@ -2003,11 +2028,38 @@ export type Database = {
       }
     }
     Functions: {
+      ajustar_costo_despacho_activo: {
+        Args: {
+          p_costo_cobrado: number
+          p_expected_updated_at: string
+          p_motivo: string
+          p_pedido_id: string
+        }
+        Returns: Database["public"]["Tables"]["pedidos"]["Row"]
+      }
       calcular_costo_despacho: {
         Args: { distancia_km: number }
         Returns: number
       }
       calcular_costo_trago: { Args: { p_producto_id: string }; Returns: number }
+      corregir_pedido_entregado: {
+        Args: {
+          p_metodo_pago: Database["public"]["Enums"]["metodo_pago"]
+          p_motivo: string
+          p_notas: string
+          p_pedido_id: string
+        }
+        Returns: Database["public"]["Tables"]["pedidos"]["Row"]
+      }
+      corregir_pagos_pedido_entregado: {
+        Args: {
+          p_motivo: string
+          p_notas: string
+          p_pagos: Json
+          p_pedido_id: string
+        }
+        Returns: Database["public"]["Tables"]["pedidos"]["Row"]
+      }
       get_dlitro_day: { Args: { ts: string }; Returns: string }
       get_turno_abierto: { Args: { p_sucursal_id: string }; Returns: string }
       get_user_rol: { Args: { _user_id: string }; Returns: string }
