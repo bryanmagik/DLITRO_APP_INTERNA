@@ -235,8 +235,12 @@ function NuevoProductoModal({
       });
       onSaved();
       onClose();
-    } catch (e: any) {
-      toast({ title: "Error al crear producto", description: e.message, variant: "destructive" });
+    } catch (e: unknown) {
+      toast({
+        title: "Error al crear producto",
+        description: e instanceof Error ? e.message : "No se pudo crear el producto",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }
@@ -511,8 +515,12 @@ function EditarProductoModal({
 
       toast({ title: "Producto actualizado", description: nombre });
       onSaved();
-    } catch (e: any) {
-      toast({ title: "Error al guardar", description: e.message, variant: "destructive" });
+    } catch (e: unknown) {
+      toast({
+        title: "Error al guardar",
+        description: e instanceof Error ? e.message : "No se pudo guardar el producto",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }

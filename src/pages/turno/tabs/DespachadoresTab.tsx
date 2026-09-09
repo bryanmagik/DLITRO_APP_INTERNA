@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Loader2, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,16 @@ interface PagoCero {
   nombre: string;
 }
 
+interface PagoDespachadorQueryRow {
+  despachador_id: string;
+  total_a_pagar: number;
+  usuarios: {
+    nombre: string | null;
+    apellido: string | null;
+    nombre_completo: string | null;
+  } | null;
+}
+
 export default function DespachadoresTab({ turno }: { turno: Turno }) {
   const [tds, setTds] = useState<TD[]>([]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
@@ -48,13 +58,12 @@ export default function DespachadoresTab({ turno }: { turno: Turno }) {
 
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const cargarPagosDesp = async () => {
+  const cargarPagosDesp = useCallback(async () => {
     const { data } = await supabase
       .from("pago_despachadores")
       .select("despachador_id, total_a_pagar, usuarios:despachador_id(nombre, apellido, nombre_completo)")
       .eq("turno_id", turno.id);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = (data as any[]) ?? [];
+    const rows = (data ?? []) as unknown as PagoDespachadorQueryRow[];
     const montos: Record<string, number> = {};
     const cero: PagoCero[] = [];
     for (const p of rows) {
@@ -71,9 +80,9 @@ export default function DespachadoresTab({ turno }: { turno: Turno }) {
     }
     setMontosPagados(montos);
     setPagosCero(cero);
-  };
+  }, [turno.id]);
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     const [tdRes, peRes, prRes, manRes] = await Promise.all([
       supabase.from("turno_despachadores").select("*").eq("turno_id", turno.id),
       supabase.from("pedidos").select("despachador_id,estado,costo_despacho").eq("turno_id", turno.id),
@@ -95,7 +104,7 @@ export default function DespachadoresTab({ turno }: { turno: Turno }) {
     }
     await cargarPagosDesp();
     setLoading(false);
-  };
+  }, [cargarPagosDesp, turno.id]);
 
   const recargarPrestamos = async () => {
     const { data } = await supabase
@@ -113,7 +122,7 @@ export default function DespachadoresTab({ turno }: { turno: Turno }) {
     setManuales((data as ManualLite[]) ?? []);
   };
 
-  useEffect(() => { cargar(); /* eslint-disable-next-line */ }, [turno.id]);
+  useEffect(() => { void cargar(); }, [cargar]);
 
   // Realtime: refrescar pedidos, manuales y pagos $0 cuando cambien en este turno
   useEffect(() => {

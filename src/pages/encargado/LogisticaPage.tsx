@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Plus, Send, FileEdit, Eye, Boxes } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthStore } from "@/stores/authStore";
@@ -11,6 +11,7 @@ import {
   ESTADO_META, EstadoLogistica, TIPOS_INSUMO, InsumoFull, StockSucRow, estadoStock, fmtFecha,
 } from "@/lib/logistica";
 import InputCajasUnidades from "@/components/InputCajasUnidades";
+import StockColumnasCells from "@/components/StockColumnasCells";
 import { calcularCantidadBase } from "@/components/CantidadFormatoInput";
 import { mlACajasUnidades } from "@/utils/stockUtils";
 
@@ -42,7 +43,7 @@ export default function LogisticaPage() {
   const [nuevoOpen, setNuevoOpen] = useState(false);
   const [editPedido, setEditPedido] = useState<PedidoRow | null>(null);
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     if (!sucursalId) { setLoading(false); return; }
     setLoading(true);
     const [insR, stR, peR] = await Promise.all([
@@ -65,9 +66,9 @@ export default function LogisticaPage() {
       setItems((its as PedidoItem[]) ?? []);
     } else setItems([]);
     setLoading(false);
-  };
+  }, [sucursalId]);
 
-  useEffect(() => { cargar(); /* eslint-disable-next-line */ }, [sucursalId]);
+  useEffect(() => { void cargar(); }, [cargar]);
 
   const stockMap = useMemo(() => {
     const m = new Map<string, StockSucRow>();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthStore } from "@/stores/authStore";
@@ -51,7 +51,7 @@ export default function GastosTab({
   const [editMetodo, setEditMetodo] = useState<Metodo>("efectivo");
   const [guardandoEdit, setGuardandoEdit] = useState(false);
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     const { data } = await supabase
       .from("gastos_turno")
       .select("id,concepto,monto,metodo,created_at")
@@ -59,8 +59,8 @@ export default function GastosTab({
       .order("created_at", { ascending: false });
     setGastos((data as Gasto[]) ?? []);
     setLoading(false);
-  };
-  useEffect(() => { cargar(); /* eslint-disable-next-line */ }, [turno.id]);
+  }, [turno.id]);
+  useEffect(() => { void cargar(); }, [cargar]);
 
   const agregar = async (e: React.FormEvent) => {
     e.preventDefault();

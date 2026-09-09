@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import writeXlsxFile from "write-excel-file/browser";
 import { supabase } from "@/integrations/supabase/client";
 
 export const COMUNAS_SANTIAGO = [
@@ -186,8 +186,6 @@ type TurnoExp = {
   fecha_dlitro: string;
   tomador_id: string;
   sucursal_nombre: string;
-  efectivo_declarado: number | null;
-  caja_chica_apertura: number;
 };
 
 type PedidoExp = {
@@ -222,7 +220,7 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
 
   let turnosQ = supabase
     .from("turnos")
-    .select("id, sucursal_id, fecha_dlitro, tomador_id, efectivo_declarado, caja_chica_apertura, sucursales(nombre)")
+    .select("id, sucursal_id, fecha_dlitro, tomador_id, sucursales(nombre)")
     .gte("fecha_dlitro", fechaInicio)
     .lte("fecha_dlitro", fechaFin)
     .order("fecha_dlitro");
@@ -237,16 +235,12 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
     sucursal_id: string;
     fecha_dlitro: string;
     tomador_id: string;
-    efectivo_declarado: number | null;
-    caja_chica_apertura: number;
     sucursales: { nombre: string } | null;
   }>) ?? []).map((t) => ({
     id: t.id,
     sucursal_id: t.sucursal_id,
     fecha_dlitro: t.fecha_dlitro,
     tomador_id: t.tomador_id,
-    efectivo_declarado: t.efectivo_declarado,
-    caja_chica_apertura: t.caja_chica_apertura ?? 0,
     sucursal_nombre: t.sucursales?.nombre ?? "—",
   }));
 
@@ -267,7 +261,6 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
     );
     pedidos.push(...page);
   }
-  console.log("[exportContadorExcel] pedidos:", pedidos.length);
 
   const pedidoIds = pedidos.map((p) => p.id);
   const items: ItemExp[] = [];
@@ -295,7 +288,6 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
       });
     }
   }
-  console.log("[exportContadorExcel] pedido_items:", items.length);
 
   const { data: promosPrecioData, error: promosErr } = await supabase
     .from("promociones_precio")
@@ -339,10 +331,6 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
     gastos.push(...gasPage);
     pagosDesp.push(...despPage);
   }
-  console.log("[exportContadorExcel] pagos_turno:", pagos.length);
-  console.log("[exportContadorExcel] gastos_turno:", gastos.length);
-  console.log("[exportContadorExcel] pago_despachadores:", pagosDesp.length);
-  console.log("[exportContadorExcel] turnos:", turnos.length);
 
   // Agrupar por fecha + sucursal
   type Key = string;
@@ -376,8 +364,6 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
     arr.push(p);
     pedidosByTurno.set(p.turno_id, arr);
   }
-
-  const turnoById = new Map(turnos.map((t) => [t.id, t]));
 
   const itemsByPedido = new Map<string, ItemExp[]>();
   for (const it of items) {
@@ -445,18 +431,8 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
 
     const tipIds = new Set(g.turnoIds);
 
-    // EFECTIVO (col U): sobre de ganancias = efectivo_declarado − caja_chica_apertura.
-    // efectivo_declarado es el conteo total del cajón (incluye caja chica); al restar
-    // caja_chica_apertura queda solo lo del sobre. Si hay varios turnos el mismo
-    // fecha_dlitro+sucursal, se suman los resultados de cada turno.
-    let efectivoDeclarado = 0;
-    for (const tid of g.turnoIds) {
-      const t = turnoById.get(tid);
-      if (!t) continue;
-      efectivoDeclarado += n(t.efectivo_declarado) - n(t.caja_chica_apertura);
-    }
-
-    // Desglose de ventas por método (pagos_turno) — independiente del sobre declarado.
+    // Desglose bruto de ventas por método (pagos_turno). Estos importes no descuentan
+    // gastos del turno, pagos a despachadores ni caja chica.
     let efectivoVentas = 0;
     let transferencia = 0;
     let tarjeta = 0;
@@ -482,8 +458,8 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
       despachoDlitro += n(d.base_por_horas);
     }
 
-    // EFECTIVO TOTAL CAJA (col AD): TODO el efectivo que ingresó por ventas
-    // (pagos_turno metodo=efectivo). NO es el sobre declarado (EFECTIVO / col U).
+    // EFECTIVO y EFECTIVO TOTAL CAJA representan todo el efectivo ingresado por ventas.
+    // Los egresos se mantienen separados en sus columnas para evitar mezclar conceptos.
     const efectivoTotalCaja = efectivoVentas;
 
     const pedidosCount = propios.length;
@@ -515,7 +491,7 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
       uber,
       canje,
       sinAlcohol,
-      Math.round(efectivoDeclarado),
+      Math.round(efectivoVentas),
       Math.round(transferencia),
       Math.round(tarjeta),
       Math.round(despachoC),
@@ -546,22 +522,10 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
     ]);
   }
 
-  const wb = XLSX.utils.book_new();
-  const ws1 = XLSX.utils.aoa_to_sheet([
-    [...HEADERS_RESUMEN],
-    ...rowsResumen,
-  ]);
-  XLSX.utils.book_append_sheet(wb, ws1, "Resumen Diario");
-
   const headersComunas = [
     "FECHA", "DÍA", "AÑO", "MES", "N°DÍA", "SUCURSAL",
     ...COMUNAS_SANTIAGO,
   ];
-  const ws2 = XLSX.utils.aoa_to_sheet([
-    headersComunas,
-    ...rowsComunas,
-  ]);
-  XLSX.utils.book_append_sheet(wb, ws2, "Comunas");
 
   const safeName = sucursalNombreArchivo
     .toUpperCase()
@@ -570,5 +534,16 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
 
   const fi = fechaInicio.replace(/-/g, "");
   const ff = fechaFin.replace(/-/g, "");
-  XLSX.writeFile(wb, `dlitro_${safeName}_${fi}_${ff}.xlsx`);
+  await writeXlsxFile([
+    {
+      sheet: "Resumen Diario",
+      data: [[...HEADERS_RESUMEN], ...rowsResumen],
+      stickyRowsCount: 1,
+    },
+    {
+      sheet: "Comunas",
+      data: [headersComunas, ...rowsComunas],
+      stickyRowsCount: 1,
+    },
+  ]).toFile(`dlitro_${safeName}_${fi}_${ff}.xlsx`);
 }

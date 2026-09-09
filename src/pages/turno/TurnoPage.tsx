@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Outlet, useOutletContext } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,7 +31,7 @@ export default function TurnoPage() {
   const [loading, setLoading] = useState(true);
   const setHeaderInfo = useTurnoHeaderStore((s) => s.setInfo);
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     if (!perfil?.sucursal_id) { setLoading(false); return; }
     setLoading(true);
     const { data } = await supabase
@@ -43,14 +43,14 @@ export default function TurnoPage() {
     setTurno(next);
     if (!next) setUnido(false);
     setLoading(false);
-  };
+  }, [perfil?.sucursal_id]);
 
   const handleAbierto = async () => {
     await cargar();
     setUnido(true);
   };
 
-  useEffect(() => { cargar(); }, [perfil?.sucursal_id]);
+  useEffect(() => { void cargar(); }, [cargar]);
   const [cerrarOpen, setCerrarOpen] = useState(false);
   const [cajaOpen, setCajaOpen] = useState(false);
   const [cambioOpen, setCambioOpen] = useState(false);

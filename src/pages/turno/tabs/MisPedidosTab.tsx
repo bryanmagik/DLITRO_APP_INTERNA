@@ -24,6 +24,9 @@ import { calcularDescuentoJarros } from "@/lib/descuentoJarros";
 import { TIPO_META, type TipoPedido } from "@/lib/tiposPedido";
 import { PromoPedidoBadge, DesglosePrecioPedido, tienePromo, esPedidoTrabajador } from "@/lib/promoPedido";
 import { cn } from "@/lib/utils";
+import { cobraRecargoPorSabor, precioSaborParaProducto, precioTotalSabores } from "@/lib/precioSaboresExtra";
+import { CorreccionPedidoEntregado } from "@/components/pedidos/CorreccionPedidoEntregado";
+import { AjusteCostoDespacho } from "@/components/pedidos/AjusteCostoDespacho";
 
 type Estado = "en_preparacion" | "listo" | "en_despacho" | "entregado" | "cancelado";
 
@@ -45,6 +48,8 @@ interface Pedido {
   subtotal: number;
   descuento: number | null;
   costo_despacho: number | null;
+  costo_despacho_calculado: number | null;
+  distancia_km: number | null;
   metodo_pago: string | null;
   monto_recibido: number | null;
   vuelto: number | null;
@@ -60,6 +65,7 @@ interface Pedido {
   promo_tipo: string | null;
   cupon_id: string | null;
   pago_registrado: boolean | null;
+  updated_at: string | null;
 }
 interface Despachador { id: string; nombre: string; nombre_completo: string | null }
 interface Item { id: string; cantidad: number; precio_unitario: number; subtotal: number; producto: { nombre: string } | null }
@@ -238,7 +244,7 @@ export default function MisPedidosTab({ turno }: { turno: Turno }) {
   const cargar = async () => {
     const { data } = await supabase
       .from("pedidos")
-      .select("id, numero_pedido, cliente_nombre, cliente_telefono, tipo, estado, total, subtotal, descuento, costo_despacho, metodo_pago, monto_recibido, vuelto, referencia_pago, direccion_entrega, referencia_entrega, despachador_id, notas, created_at, hora_agendada, jarros_prometidos, jarros_entregados, promo_tipo, cupon_id, pago_registrado")
+      .select("id, numero_pedido, cliente_nombre, cliente_telefono, tipo, estado, total, subtotal, descuento, costo_despacho, costo_despacho_calculado, distancia_km, metodo_pago, monto_recibido, vuelto, referencia_pago, direccion_entrega, referencia_entrega, despachador_id, notas, created_at, updated_at, hora_agendada, jarros_prometidos, jarros_entregados, promo_tipo, cupon_id, pago_registrado")
       .eq("turno_id", turno.id)
       .order("numero_pedido", { ascending: false });
     setPedidos(((data as Pedido[]) ?? []).map((p) => ({ ...p, estado: normalizarEstado(p.estado) })));
@@ -729,7 +735,9 @@ function PedidoDetalleModal({
       setProductos(prods);
       setCategorias((catRes.data as CategoriaCat[]) ?? []);
       setSabores((sxRes.data as SaborExtra[]) ?? []);
-      setPagosDetalle(((pagosRes.data as PagoTurnoDetalle[] | null) ?? []).filter((p) => Number(p.monto) > 0));
+      const pagosActuales = ((pagosRes.data as PagoTurnoDetalle[] | null) ?? [])
+        .filter((p) => Number(p.monto) > 0);
+      setPagosDetalle(pagosActuales);
       setLoading(false);
     })();
   }, [pedido]);
@@ -763,7 +771,7 @@ function PedidoDetalleModal({
     pushItem(p, []);
   };
   const pushItem = (p: ProductoCat, extras: SaborExtra[]) => {
-    const extrasPrecio = extras.reduce((a, e) => a + e.precio, 0);
+    const extrasPrecio = precioTotalSabores(p, extras);
     const precio = p.precio + extrasPrecio;
     const nota = extras.length > 0 ? `Extras: ${extras.map((e) => formatSaborExtra(e.nombre)).join(", ")}` : null;
     setItems((prev) => [...prev, {
@@ -837,7 +845,6 @@ function PedidoDetalleModal({
   };
 
   const cambiarEstado = async (nuevo: Estado) => {
-    console.log("[pedidos] cambiarEstado → id:", pedido?.id, "nuevo:", nuevo);
     if (!pedido?.id) { toast.error("Pedido sin ID, recargá la página"); return; }
     const actual = normalizarEstado(pedido.estado);
     if (actual === "entregado" || actual === "cancelado") {
@@ -1101,7 +1108,6 @@ function PedidoDetalleModal({
   };
 
   const confirmarPago = async () => {
-    console.log("[pedidos] confirmarPago → id:", pedido?.id);
     if (!pedido?.id) { toast.error("Pedido sin ID"); return; }
     if (pedido.pago_registrado) {
       toast.error("El pago ya está registrado");
@@ -1330,7 +1336,8 @@ function PedidoDetalleModal({
   return (
     <>
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-auto">
+      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-0 gap-0">
+        <div className="sticky top-0 z-20 bg-card border-b border-border px-4 sm:px-6 py-4">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3 flex-wrap">
             <span className="font-display text-3xl text-primary">#{pedido.numero_pedido}</span>
@@ -1352,8 +1359,9 @@ function PedidoDetalleModal({
             </Button>
           </DialogTitle>
         </DialogHeader>
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(19rem,0.85fr)] gap-4 p-4 sm:p-6">
           {/* Productos + totales */}
           <div className="space-y-3">
             <div>
@@ -1519,15 +1527,28 @@ function PedidoDetalleModal({
             </div>
             <div className="space-y-2">
               <Label className="label-upper text-xs">Cliente</Label>
-              <Input value={cNombre} onChange={(e) => setCNombre(e.target.value)} className="bg-background" disabled={pedidoCerrado} />
-              <Input value={cTel} onChange={(e) => setCTel(e.target.value)} placeholder="Teléfono" className="bg-background" disabled={pedidoCerrado} />
+              <Label htmlFor="pedido-cliente-nombre" className="text-xs">Nombre</Label>
+              <Input id="pedido-cliente-nombre" value={cNombre} onChange={(e) => setCNombre(e.target.value)} className="bg-background" disabled={pedidoCerrado} />
+              <Label htmlFor="pedido-cliente-telefono" className="text-xs">Teléfono</Label>
+              <Input id="pedido-cliente-telefono" value={cTel} onChange={(e) => setCTel(e.target.value)} placeholder="Ej. +56 9 1234 5678" className="bg-background" disabled={pedidoCerrado} />
             </div>
             {tipo === "despacho" && (
               <div className="space-y-2">
                 <Label className="label-upper text-xs">Dirección</Label>
-                <Input value={dir} onChange={(e) => setDir(e.target.value)} className="bg-background" disabled={pedidoCerrado} />
-                <Input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Referencia" className="bg-background" disabled={pedidoCerrado} />
+                <Label htmlFor="pedido-direccion" className="text-xs">Dirección de entrega</Label>
+                <Input id="pedido-direccion" value={dir} onChange={(e) => setDir(e.target.value)} className="bg-background" disabled={pedidoCerrado} />
+                <Label htmlFor="pedido-referencia" className="text-xs">Referencia</Label>
+                <Input id="pedido-referencia" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Ej. portón azul" className="bg-background" disabled={pedidoCerrado} />
               </div>
+            )}
+            {tipo === "despacho" && !pedidoCerrado && (
+              <AjusteCostoDespacho
+                pedido={pedido}
+                onSaved={() => {
+                  onChanged();
+                  onClose();
+                }}
+              />
             )}
             {tipo === "despacho" && (
               <div className="space-y-2">
@@ -1547,13 +1568,17 @@ function PedidoDetalleModal({
               <Label className="label-upper text-xs">Notas</Label>
               <Textarea value={notas} onChange={(e) => setNotas(e.target.value)} className="bg-background" rows={3} disabled={pedidoCerrado} />
             </div>
-            {!pedidoCerrado && (
-              <Button onClick={guardarCambios} disabled={saving || items.length === 0} className="w-full">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Guardar cambios
-              </Button>
-            )}
           </div>
         </div>
+
+        <CorreccionPedidoEntregado
+          pedido={pedido}
+          pagosActuales={pagosDetalle}
+          onSuccess={() => {
+            onChanged();
+            onClose();
+          }}
+        />
 
         {pedidoCerrado && esTipoDespacho(pedido.tipo) && (
           <div className="border border-border rounded-lg p-4 space-y-3 bg-card">
@@ -1619,7 +1644,7 @@ function PedidoDetalleModal({
         )}
 
         {/* Cambios de estado */}
-        <div className="border-t border-border pt-3 flex flex-wrap gap-2 items-center">
+        <div className="sticky bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur px-4 sm:px-6 py-3 flex flex-wrap gap-2 items-center">
           {pedidoCerrado ? (
             <div className={`text-sm font-medium px-3 py-2 rounded-md border w-full text-center ${
               estadoActual === "entregado"
@@ -1632,6 +1657,9 @@ function PedidoDetalleModal({
             </div>
           ) : (
             <>
+              <Button onClick={guardarCambios} disabled={saving || items.length === 0}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Guardar cambios
+              </Button>
               {meta.siguiente && meta.siguiente !== "entregado" && (
                 <Button onClick={() => cambiarEstado(meta.siguiente!)} className="bg-primary text-primary-foreground hover:bg-primary/90 uppercase tracking-wider text-xs">
                   → {labelAccionEstado(pedido.tipo, meta.siguiente)}
@@ -1769,16 +1797,32 @@ function PedidoDetalleModal({
               <DialogTitle>{extrasFor?.nombre}</DialogTitle>
             </DialogHeader>
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">¿Agregar sabor extra? <span className="font-mono">(+{fmtCLP(1000)} c/u)</span></p>
+              <p className="text-sm text-muted-foreground">
+                ¿Agregar sabor extra?{" "}
+                <span className="font-mono">
+                  ({extrasFor && !cobraRecargoPorSabor(extrasFor)
+                    ? "sin recargo"
+                    : `+${fmtCLP(1000)} c/u`})
+                </span>
+              </p>
               <div className="grid grid-cols-1 gap-1 max-h-72 overflow-auto">
                 {sabores.map((s) => (
                   <label key={s.id} className="flex items-center gap-2 p-2 rounded-md bg-background border border-border cursor-pointer hover:border-primary">
                     <Checkbox
                       checked={extrasSel.has(s.id)}
-                      onCheckedChange={() => setExtrasSel((st) => { const n = new Set(st); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; })}
+                      onCheckedChange={() => setExtrasSel((st) => {
+                        const n = new Set(st);
+                        if (n.has(s.id)) n.delete(s.id);
+                        else n.add(s.id);
+                        return n;
+                      })}
                     />
                     <span className="flex-1 text-sm">{formatSaborExtra(s.nombre)}</span>
-                    <span className="text-xs font-mono text-muted-foreground">+{fmtCLP(s.precio)}</span>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      {extrasFor && !cobraRecargoPorSabor(extrasFor)
+                        ? "Sin recargo"
+                        : `+${fmtCLP(extrasFor ? precioSaborParaProducto(extrasFor, s) : s.precio)}`}
+                    </span>
                   </label>
                 ))}
               </div>
@@ -2110,7 +2154,8 @@ function PedidoDetalleModal({
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
-    </AlertDialog>
+      </AlertDialog>
+
     </>
   );
 }

@@ -3,14 +3,12 @@ import { isGoogleMapsConfigured, loadGoogleMaps } from "@/lib/googleMaps";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
 
-interface Suggestion {
-  placePrediction: {
-    toPlace: () => { fetchFields: (opts: { fields: string[] }) => Promise<void>; formattedAddress?: string; location?: { lat: () => number; lng: () => number } | { lat: number; lng: number } };
-    text?: { text?: string };
-    mainText?: { text?: string };
-    secondaryText?: { text?: string };
-  };
-}
+export const ADDRESS_AUTOCOMPLETE_DEBOUNCE_MS = 800;
+export const ADDRESS_AUTOCOMPLETE_MIN_LENGTH = 3;
+export const PLACES_AUTOCOMPLETE_REQUEST_EVENT = "dlitro:places-autocomplete-request";
+
+type Suggestion = google.maps.places.AutocompleteSuggestion;
+type PlaceLocation = google.maps.LatLng | { lat: number; lng: number };
 
 interface Props {
   value: string;
@@ -29,8 +27,13 @@ export default function AddressAutocomplete({
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const sessionTokenRef = useRef<unknown>(null);
+  const sessionTokenRef = useRef<google.maps.places.AutocompleteSessionToken | null>(null);
   const debounceRef = useRef<number | null>(null);
+  const blurRef = useRef<number | null>(null);
+  const requestVersionRef = useRef(0);
+  const activeInputRef = useRef<string | null>(null);
+  const successfulInputRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     if (!isGoogleMapsConfigured()) {
@@ -45,40 +48,107 @@ export default function AddressAutocomplete({
       });
   }, []);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestVersionRef.current += 1;
+      if (debounceRef.current !== null) window.clearTimeout(debounceRef.current);
+      if (blurRef.current !== null) window.clearTimeout(blurRef.current);
+      activeInputRef.current = null;
+      successfulInputRef.current = null;
+      sessionTokenRef.current = null;
+    };
+  }, []);
+
+  const clearPendingDebounce = () => {
+    if (debounceRef.current !== null) {
+      window.clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+  };
+
   const handleInput = (v: string) => {
     onChange(v);
     if (mapsOk !== true) return;
 
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    if (!v.trim() || v.trim().length < 3) {
+    const input = v.trim();
+
+    if (input.length < ADDRESS_AUTOCOMPLETE_MIN_LENGTH) {
+      clearPendingDebounce();
+      requestVersionRef.current += 1;
+      activeInputRef.current = null;
+      successfulInputRef.current = null;
       setSuggestions([]);
       setOpen(false);
+      setLoading(false);
       return;
     }
 
+    if (input === activeInputRef.current) return;
+
+    if (input === successfulInputRef.current) {
+      clearPendingDebounce();
+      requestVersionRef.current += 1;
+      activeInputRef.current = null;
+      setLoading(false);
+      setOpen(true);
+      return;
+    }
+
+    clearPendingDebounce();
+    const requestVersion = ++requestVersionRef.current;
+    activeInputRef.current = input;
+    setLoading(false);
+    setOpen(false);
+
     debounceRef.current = window.setTimeout(async () => {
+      debounceRef.current = null;
       try {
         setLoading(true);
         const g = await loadGoogleMaps();
         const places = await g.maps.importLibrary("places") as google.maps.PlacesLibrary;
+        if (!mountedRef.current || requestVersion !== requestVersionRef.current) return;
         if (!sessionTokenRef.current) {
           sessionTokenRef.current = new places.AutocompleteSessionToken();
         }
+        window.dispatchEvent(new CustomEvent(PLACES_AUTOCOMPLETE_REQUEST_EVENT, {
+          detail: { regionCode },
+        }));
         const { suggestions: sugs } = await places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-          input: v,
-          sessionToken: sessionTokenRef.current as google.maps.AutocompleteSessionToken,
+          input,
+          sessionToken: sessionTokenRef.current,
           includedRegionCodes: [regionCode],
         });
-        setSuggestions((sugs as Suggestion[]) || []);
+        if (!mountedRef.current || requestVersion !== requestVersionRef.current) return;
+        setSuggestions(sugs || []);
+        successfulInputRef.current = input;
+        activeInputRef.current = null;
         setOpen(true);
       } catch (e) {
+        if (!mountedRef.current || requestVersion !== requestVersionRef.current) return;
+        activeInputRef.current = null;
+        successfulInputRef.current = null;
         console.error("[gmaps autocomplete]", e);
         setSuggestions([]);
         setOpen(false);
       } finally {
-        setLoading(false);
+        if (mountedRef.current && requestVersion === requestVersionRef.current) setLoading(false);
       }
-    }, 250);
+    }, ADDRESS_AUTOCOMPLETE_DEBOUNCE_MS);
+  };
+
+  const abandonSearch = () => {
+    clearPendingDebounce();
+    requestVersionRef.current += 1;
+    activeInputRef.current = null;
+    setLoading(false);
+    blurRef.current = window.setTimeout(() => {
+      setOpen(false);
+      sessionTokenRef.current = null;
+      successfulInputRef.current = null;
+      blurRef.current = null;
+    }, 200);
   };
 
   const pick = async (sug: Suggestion) => {
@@ -86,14 +156,16 @@ export default function AddressAutocomplete({
       const place = sug.placePrediction.toPlace();
       await place.fetchFields({ fields: ["formattedAddress", "location"] });
       const addr = place.formattedAddress || sug.placePrediction.text?.text || "";
-      const loc = place.location;
-      const lat = typeof loc?.lat === "function" ? loc.lat() : (loc as { lat: number })?.lat;
-      const lng = typeof loc?.lng === "function" ? loc.lng() : (loc as { lng: number })?.lng;
+      const loc = place.location as PlaceLocation | undefined;
+      const lat = typeof loc?.lat === "function" ? loc.lat() : loc?.lat;
+      const lng = typeof loc?.lng === "function" ? loc.lng() : loc?.lng;
       onChange(addr);
       onSelect({ address: addr, lat: Number(lat), lng: Number(lng) });
       setOpen(false);
       setSuggestions([]);
       sessionTokenRef.current = null;
+      activeInputRef.current = null;
+      successfulInputRef.current = null;
     } catch (e) {
       console.error("[gmaps pick]", e);
     }
@@ -130,8 +202,14 @@ export default function AddressAutocomplete({
       <input
         value={value}
         onChange={(e) => handleInput(e.target.value)}
-        onBlur={() => setTimeout(() => setOpen(false), 200)}
-        onFocus={() => suggestions.length > 0 && setOpen(true)}
+        onBlur={abandonSearch}
+        onFocus={() => {
+          if (blurRef.current !== null) {
+            window.clearTimeout(blurRef.current);
+            blurRef.current = null;
+          }
+          if (suggestions.length > 0) setOpen(true);
+        }}
         placeholder={placeholder}
         maxLength={200}
         className={`flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${hasError ? "border-destructive ring-1 ring-destructive" : ""} ${className ?? ""}`}

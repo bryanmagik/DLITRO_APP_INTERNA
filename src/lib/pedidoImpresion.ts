@@ -1,4 +1,5 @@
 import { formatSaborExtra, type ComandaItem, normalizarTipoComanda } from "@/lib/printComanda";
+import { saboresConPrecioAplicable } from "@/lib/precioSaboresExtra";
 import type { PedidoImpresion } from "@/services/printer";
 
 type PedidoItemRow = {
@@ -104,7 +105,9 @@ export function comandaItemFromPedidoItem(
     precio_unitario: row.precio_unitario,
     esRegalo: row.precio_unitario === 0,
     esPromoJarros,
-    extras: parsed.extras.length > 0 ? parsed.extras : undefined,
+    extras: parsed.extras.length > 0
+      ? saboresConPrecioAplicable({ nombre: row.nombre }, parsed.extras)
+      : undefined,
     notas: parsed.notaUsuario,
     notaPromo: notaPromoSinJarros,
     precioOriginal: parsed.precioOriginal,

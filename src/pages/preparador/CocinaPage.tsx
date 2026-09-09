@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,10 @@ interface PedidoCocina {
   items: ItemRow[];
   requiere_revision_cocina: boolean;
 }
+
+type WindowWithLegacyAudio = Window & {
+  webkitAudioContext?: typeof AudioContext;
+};
 
 const fmtHaceMin = (iso: string) => {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -49,8 +53,7 @@ export default function CocinaPage() {
     return localStorage.getItem("dlitro-cocina-sound") !== "off";
   });
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
-  const knownIdsRef = (globalThis as any).__cocinaKnownIdsRef ?? { current: new Set<string>() };
-  (globalThis as any).__cocinaKnownIdsRef = knownIdsRef;
+  const knownIdsRef = useRef(new Set<string>());
 
   // tick para refrescar "hace X min"
   useEffect(() => {
@@ -66,7 +69,7 @@ export default function CocinaPage() {
 
   const playNotificationSound = () => {
     try {
-      const AC = (window.AudioContext || (window as any).webkitAudioContext);
+      const AC = window.AudioContext || (window as WindowWithLegacyAudio).webkitAudioContext;
       if (!AC) return;
       const audioCtx = new AC();
       const oscillator = audioCtx.createOscillator();

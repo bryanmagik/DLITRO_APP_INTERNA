@@ -40,12 +40,22 @@ interface Despachador {
   nombre_completo: string | null;
 }
 
+interface TurnoDespachadorQueryRow {
+  usuarios: Despachador | null;
+}
+
 interface Sucursal {
   id: string;
   nombre: string;
   direccion: string;
   latitud: number;
   longitud: number;
+}
+
+declare global {
+  interface Window {
+    __dlitroTogglePedido?: (id: string) => void;
+  }
 }
 
 // ── Constantes ────────────────────────────────────────────────────────────────
@@ -121,6 +131,19 @@ function buildCasaSvg(activa: boolean): string {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>'"]/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "'": "&#39;",
+      '"': "&quot;",
+    };
+    return entities[character];
+  });
+}
+
 // ── Contenido del InfoWindow ───────────────────────────────────────────────────
 
 function buildInfoWindowContent(
@@ -129,22 +152,29 @@ function buildInfoWindowContent(
   despachadores: Despachador[],
 ): string {
   const color = COLORES[p.estado] ?? "#6B7280";
-  const etiqueta = ETIQUETAS[p.estado] ?? p.estado;
+  const etiqueta = escapeHtml(ETIQUETAS[p.estado] ?? p.estado);
   const { texto: tiempo, alerta } = tiempoTranscurrido(p.updated_at);
   const tiempoColor = alerta ? "#EF4444" : "#9CA3AF";
 
   const monto = p.total != null
     ? `$${p.total.toLocaleString("es-CL")}`
     : "—";
-  const metodo = p.metodo_pago ? (METODO_PAGO[p.metodo_pago] ?? p.metodo_pago) : "—";
+  const metodo = p.metodo_pago
+    ? escapeHtml(METODO_PAGO[p.metodo_pago] ?? p.metodo_pago)
+    : "—";
 
   const d = despachadores.find((x) => x.id === p.despachador_id);
-  const dNombre = d ? (d.nombre_completo ?? `${d.nombre} ${d.apellido ?? ""}`.trim()) : null;
+  const dNombre = d
+    ? escapeHtml(d.nombre_completo ?? `${d.nombre} ${d.apellido ?? ""}`.trim())
+    : null;
   const despachadoreHtml = dNombre
     ? `<span style="color:#111827">${dNombre}</span>`
     : `<span style="color:#EF4444;font-weight:600">Sin asignar</span>`;
 
-  const checkId = `iw-chk-${p.id}`;
+  const pedidoId = /^[0-9a-f-]{36}$/i.test(p.id) ? p.id : "";
+  const checkId = `iw-chk-${pedidoId}`;
+  const clienteNombre = escapeHtml(p.cliente_nombre);
+  const direccionEntrega = p.direccion_entrega ? escapeHtml(p.direccion_entrega) : null;
 
   return `
 <div style="font-family:Inter,sans-serif;width:230px;font-size:12px;line-height:1.4;margin:-8px -11px">
@@ -160,12 +190,12 @@ function buildInfoWindowContent(
   <div style="padding:8px 12px;display:flex;flex-direction:column;gap:5px">
     <div style="display:flex;align-items:flex-start;gap:6px">
       <span>👤</span>
-      <span style="color:#111827;font-weight:500">${p.cliente_nombre}</span>
+      <span style="color:#111827;font-weight:500">${clienteNombre}</span>
     </div>
-    ${p.direccion_entrega ? `
+    ${direccionEntrega ? `
     <div style="display:flex;align-items:flex-start;gap:6px">
       <span style="margin-top:1px">📍</span>
-      <span style="color:#6b7280;font-size:11px">${p.direccion_entrega}</span>
+      <span style="color:#6b7280;font-size:11px">${direccionEntrega}</span>
     </div>` : ""}
     <div style="display:flex;align-items:center;gap:6px">
       <span>💰</span>
@@ -183,7 +213,7 @@ function buildInfoWindowContent(
         id="${checkId}"
         type="checkbox"
         ${selected ? "checked" : ""}
-        onchange="window.__dlitroTogglePedido && window.__dlitroTogglePedido('${p.id}')"
+        onchange="window.__dlitroTogglePedido && window.__dlitroTogglePedido('${pedidoId}')"
         style="cursor:pointer;width:13px;height:13px;accent-color:${color}"
       />
       <span style="font-size:11px;color:#374151;font-weight:500">Seleccionar este pedido</span>
@@ -245,7 +275,6 @@ export default function MapaDespachos() {
 
   const cargarPedidos = useCallback(async () => {
     if (!turno?.id || !perfil?.sucursal_id) return;
-    console.log("[MapaDespachos] cargarPedidos — sucursal:", perfil.sucursal_id, "turno:", turno.id);
     const { data, error: err } = await supabase
       .from("pedidos")
       .select("id, numero_pedido, cliente_nombre, estado, direccion_entrega, latitud_entrega, longitud_entrega, despachador_id, total, metodo_pago, updated_at")
@@ -255,7 +284,6 @@ export default function MapaDespachos() {
       .not("estado", "in", `(${ESTADOS_EXCLUIDOS.join(",")})`)
       .order("numero_pedido");
     if (err) { setError("No se pudieron cargar los pedidos."); return; }
-    console.log("[MapaDespachos] cargarPedidos — encontrados:", data?.length ?? 0);
     setPedidos((data ?? []) as PedidoDespacho[]);
   }, [turno?.id, perfil?.sucursal_id]);
 
@@ -267,7 +295,8 @@ export default function MapaDespachos() {
       .eq("turno_id", turno.id)
       .eq("activo", true);
     if (err) { console.error("Error cargando despachadores:", err); return; }
-    const lista: Despachador[] = (data ?? []).map((row: any) => ({
+    const rows = (data ?? []) as unknown as TurnoDespachadorQueryRow[];
+    const lista: Despachador[] = rows.map((row) => ({
       id: row.usuarios?.id,
       nombre: row.usuarios?.nombre ?? "",
       apellido: row.usuarios?.apellido ?? null,
@@ -279,14 +308,15 @@ export default function MapaDespachos() {
   // ── Callback global para checkbox del InfoWindow ───────────────────────────
 
   useEffect(() => {
-    (window as any).__dlitroTogglePedido = (id: string) => {
+    window.__dlitroTogglePedido = (id: string) => {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        next.has(id) ? next.delete(id) : next.add(id);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
         return next;
       });
     };
-    return () => { delete (window as any).__dlitroTogglePedido; };
+    return () => { delete window.__dlitroTogglePedido; };
   }, []);
 
   // ── Google Maps init ───────────────────────────────────────────────────────
@@ -455,7 +485,7 @@ export default function MapaDespachos() {
         marker.setMap(null);
         markersRef.current.delete(id);
         if (rutaActiva === id) {
-          dirRendererRef.current?.setDirections({ routes: [] } as any);
+          dirRendererRef.current?.set("directions", null);
           setRutaActiva(null);
         }
       }
@@ -507,17 +537,13 @@ export default function MapaDespachos() {
     const turnoId = turno.id;
     const channelName = `mapa-despachos-${turnoId}-${sucursalId}`;
 
-    console.log("[MapaDespachos] Montando — suscribiendo canal:", channelName);
-
     const channel = supabase
       .channel(channelName)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "pedidos" },
         (payload) => {
-          console.log("[MapaDespachos] INSERT recibido:", payload.new);
           if (payload.new.sucursal_id === sucursalId && payload.new.tipo === "despacho") {
-            console.log("[MapaDespachos] Pedido de despacho nuevo para esta sucursal — recargando");
             cargarPedidos();
           }
         },
@@ -526,7 +552,6 @@ export default function MapaDespachos() {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "pedidos" },
         (payload) => {
-          console.log("[MapaDespachos] UPDATE recibido:", payload.new);
           if (payload.new.sucursal_id === sucursalId) {
             cargarPedidos();
           }
@@ -542,12 +567,9 @@ export default function MapaDespachos() {
         { event: "UPDATE", schema: "public", table: "turno_despachadores", filter: `turno_id=eq.${turnoId}` },
         () => cargarDespachadores(),
       )
-      .subscribe((status) => {
-        console.log("[MapaDespachos] Estado del canal:", status);
-      });
+      .subscribe();
 
     return () => {
-      console.log("[MapaDespachos] Desmontando — removiendo canal:", channelName);
       supabase.removeChannel(channel);
     };
   }, [turno?.id, perfil?.sucursal_id, cargarPedidos, cargarDespachadores]);
@@ -606,7 +628,8 @@ export default function MapaDespachos() {
     e.stopPropagation();
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };

@@ -124,6 +124,25 @@ interface TurnoResumen {
   comentario_autor_nombre: string | null;
 }
 
+interface TurnoResumenQueryRow {
+  id: string;
+  sucursal_id: string;
+  fecha_dlitro: string;
+  caja_chica_apertura: number | null;
+  diferencia_caja: number | null;
+  efectivo_declarado: number | null;
+  efectivo_declarado_caja_chica: number | null;
+  efectivo_declarado_sobre: number | null;
+  efectivo_sistema: number | null;
+  observacion_descuadre: string | null;
+  estado_cuadratura: string | null;
+  comentario_contador: string | null;
+  comentario_contador_fecha: string | null;
+  comentario_contador_usuario_id: string | null;
+  sucursales: { nombre: string } | null;
+  comentario_autor: { nombre: string | null; nombre_completo: string | null } | null;
+}
+
 interface PagoTurno {
   id: string;
   turno_id: string;
@@ -181,6 +200,21 @@ interface PagoDesp {
   base_por_horas: number | null;
   bono: number | null;
   total_a_pagar: number;
+}
+
+interface PagoDespQueryRow {
+  id: string;
+  despachador_id: string;
+  pedidos_entregados: number | null;
+  horas_trabajadas: number | null;
+  base_por_horas: number | null;
+  bono: number | null;
+  total_a_pagar: number;
+  usuarios: {
+    nombre_completo: string | null;
+    nombre: string | null;
+    apellido: string | null;
+  } | null;
 }
 
 interface DetalleData {
@@ -342,9 +376,9 @@ export default function ContadorPage() {
       .gte("fecha_dlitro", inicio)
       .lte("fecha_dlitro", fin)
       .order("fecha_dlitro")
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .then(({ data }) => {
-        const lista: TurnoResumen[] = ((data as any[]) ?? []).map((t) => ({
+        const rows = (data ?? []) as unknown as TurnoResumenQueryRow[];
+        const lista: TurnoResumen[] = rows.map((t) => ({
           id: t.id,
           sucursal_id: t.sucursal_id,
           sucursal_nombre: t.sucursales?.nombre ?? "—",
@@ -453,8 +487,8 @@ export default function ContadorPage() {
         .eq("turno_id", turno.id),
     ]);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const desps: PagoDesp[] = ((dpR.data as any[]) ?? []).map((d) => ({
+    const despachadorRows = (dpR.data ?? []) as unknown as PagoDespQueryRow[];
+    const desps: PagoDesp[] = despachadorRows.map((d) => ({
       id: d.id,
       despachador_nombre:
         d.usuarios?.nombre_completo ||
@@ -470,7 +504,9 @@ export default function ContadorPage() {
     setDetalle({
       pagos: (pgR.data as PagoTurno[]) ?? [],
       gastos: (gtR.data as GastoTurno[]) ?? [],
-      pedidos: (pedR.data as PedidoRow[]) ?? [],
+      // Supabase no puede inferir con precisión este alias relacional; el
+      // contrato se valida en el límite de la consulta y se consume tipado aquí.
+      pedidos: (pedR.data as unknown as PedidoRow[]) ?? [],
       despachadores: desps,
     });
     setLoadingDetalle(false);
@@ -997,7 +1033,7 @@ function CalendarioGrid({
           const esHoy = fecha === hoyStr;
           const dotColor = filtroCuadratura === "todos"
             ? (dotColorPorFecha.get(fecha) ?? "bg-success")
-            : (filtroCuadratura !== "todos" ? CUADRATURA_CONFIG[filtroCuadratura].dotColor : "bg-success");
+            : CUADRATURA_CONFIG[filtroCuadratura].dotColor;
 
           return (
             <button

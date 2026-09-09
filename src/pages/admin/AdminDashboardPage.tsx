@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useMemo, useState, type ComponentType, type CSSProperties } from "react";
 import {
   Bar,
   BarChart,
@@ -282,7 +282,7 @@ function MetricCard({
 }: {
   title: string;
   value: string;
-  icon: ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string; style?: CSSProperties }>;
   delta: number | null;
   vsLabel: string;
   loading: boolean;

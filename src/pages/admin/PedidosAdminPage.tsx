@@ -14,6 +14,8 @@ import { TIPO_META, type TipoPedido } from "@/lib/tiposPedido";
 import { parseItemNotas, esItemPromoJarros } from "@/lib/pedidoImpresion";
 import { formatSaborExtra } from "@/lib/printComanda";
 import { referenciaPagoTransferencia } from "@/lib/referenciaPago";
+import { saboresConPrecioAplicable } from "@/lib/precioSaboresExtra";
+import { CorreccionPedidoEntregado } from "@/components/pedidos/CorreccionPedidoEntregado";
 import { Navigate } from "react-router-dom";
 
 type Estado = "en_preparacion" | "listo" | "en_despacho" | "entregado" | "cancelado";
@@ -560,8 +562,6 @@ function PedidoEditModal({
       refFinal = pedido.referencia_pago;
     }
 
-    setSaving(true);
-
     const updatePayload = {
       cliente_nombre: clienteNombre.trim(),
       cliente_telefono: clienteTelefono.trim() || null,
@@ -577,6 +577,8 @@ function PedidoEditModal({
       subtotal,
       total: totalCalc,
     };
+
+    setSaving(true);
 
     const logs: Array<{
       pedido_id: string;
@@ -788,6 +790,12 @@ function PedidoEditModal({
             <div className="py-10 text-center text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin inline mr-2" /> Cargando…
             </div>
+          ) : pedido.estado === "entregado" ? (
+            <CorreccionPedidoEntregado
+              pedido={pedido}
+              pagosActuales={pagosDetalle}
+              onSuccess={onSaved}
+            />
           ) : (
             <div className="space-y-5">
               <section className="space-y-2">
@@ -998,7 +1006,8 @@ function PedidoEditModal({
                 <div className="border border-border rounded-md divide-y divide-border bg-background">
                   {items.map((it, idx) => {
                     const parsed = parseItemNotas(it.notas);
-                    const extrasTotal = parsed.extras.reduce((a, e) => a + e.precio, 0);
+                    const extrasAplicables = saboresConPrecioAplicable({ nombre: it.nombre }, parsed.extras) ?? [];
+                    const extrasTotal = extrasAplicables.reduce((a, e) => a + e.precio, 0);
                     const baseUnit = Math.max(0, it.precio_unitario - extrasTotal);
                     const isPromo =
                       baseUnit === 0
@@ -1046,7 +1055,7 @@ function PedidoEditModal({
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
-                        {parsed.extras.map((ex, exIdx) => (
+                        {extrasAplicables.map((ex, exIdx) => (
                           <div key={`${it.id ?? idx}-ex-${exIdx}`} className="flex items-center pl-4 pr-10 text-xs text-muted-foreground">
                             <span className="flex-1 truncate">+ {formatSaborExtra(ex.nombre)}</span>
                             <span className="font-mono w-24 text-right">{fmtCLP(ex.precio * it.cantidad)}</span>
@@ -1090,13 +1099,15 @@ function PedidoEditModal({
             </div>
           )}
 
-          <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Button>
-            <Button onClick={guardar} disabled={saving || loading || items.length === 0}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Guardar cambios
-            </Button>
-          </DialogFooter>
+          {pedido.estado !== "entregado" && (
+            <DialogFooter className="gap-2">
+              <Button variant="ghost" onClick={onClose} disabled={saving}>Cancelar</Button>
+              <Button onClick={guardar} disabled={saving || loading || items.length === 0}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                Guardar cambios
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 

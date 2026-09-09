@@ -63,6 +63,9 @@ export default function SeguimientoPedidoPage() {
 
   const cargar = async () => {
     if (!pedidoId) return;
+    // Módulo público experimental: su RPC permanece fuera del esquema de
+    // migraciones activo y, por tanto, de los tipos generados de staging.
+    // @ts-expect-error El contrato se conserva solo mientras la prueba siga disponible.
     const { data, error: err } = await supabase.rpc("get_seguimiento_pedido", { p_pedido_id: pedidoId });
 
     if (err) {

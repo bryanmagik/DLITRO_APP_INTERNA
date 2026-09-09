@@ -29,7 +29,7 @@ export default function TarifasDespachoPage() {
   const load = async () => {
     setLoading(true);
     const { data, error } = await supabase
-      .from("tarifas_despacho" as any)
+      .from("tarifas_despacho")
       .select("*")
       .order("tramo");
     if (error) {
@@ -47,7 +47,7 @@ export default function TarifasDespachoPage() {
   const guardarFila = async (t: Tarifa) => {
     const nuevo = parseInt(precios[t.id] || "0", 10) || 0;
     const { error } = await supabase
-      .from("tarifas_despacho" as any)
+      .from("tarifas_despacho")
       .update({ precio: nuevo, updated_at: new Date().toISOString() })
       .eq("id", t.id);
     if (error) {
@@ -70,7 +70,7 @@ export default function TarifasDespachoPage() {
     if (!previewMode || !montoAjuste) return;
     const updates = tarifas.map((t) =>
       supabase
-        .from("tarifas_despacho" as any)
+        .from("tarifas_despacho")
         .update({ precio: previewNuevoPrecio(t.precio), updated_at: new Date().toISOString() })
         .eq("id", t.id)
     );

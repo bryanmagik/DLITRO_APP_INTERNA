@@ -22,6 +22,8 @@ import mojitoImg from "@/assets/mojito.jpg";
 import coladaImg from "@/assets/colada.jpg";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { loadGoogleMaps } from "@/lib/googleMaps";
+import { precioSaborParaProducto, precioTotalSabores, saboresConPrecioAplicable } from "@/lib/precioSaboresExtra";
+import type { TablesInsert } from "@/integrations/supabase/types";
 
 interface Categoria { id: string; nombre: string; orden: number | null }
 interface Producto {
@@ -381,7 +383,9 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
       window.setTimeout(() => setHighlightUid(null), 1000);
     }
   };
-  const precioLinea = (l: Linea) => l.esRegalo ? 0 : l.producto.precio + (l.extras?.reduce((a, e) => a + e.precio, 0) ?? 0);
+  const precioLinea = (l: Linea) => l.esRegalo
+    ? 0
+    : l.producto.precio + precioTotalSabores(l.producto, l.extras);
   const abrirEdicion = (l: Linea) => {
     if (l.esRegalo) return;
     setEditingUid(l.uid);
@@ -422,7 +426,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
       const catalogo = productos.find((p) => p.id === l.producto.id)?.precio
         ?? l.precioOriginal
         ?? l.producto.precio;
-      const extras = l.extras?.reduce((a, e) => a + e.precio, 0) ?? 0;
+      const extras = precioTotalSabores(l.producto, l.extras);
       return acc + (catalogo + extras) * l.cantidad;
     }, 0);
   }, [lineas, productos]);
@@ -440,7 +444,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
   useEffect(() => {
     (async () => {
       const { data } = await supabase
-        .from("tarifas_despacho" as any)
+        .from("tarifas_despacho")
         .select("tramo, distancia_desde, distancia_hasta, precio")
         .order("tramo");
       if (data) setTarifasDespacho(data as unknown as TarifaDespacho[]);
@@ -457,7 +461,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
     let cancelled = false;
     (async () => {
       try {
-        const g: any = await loadGoogleMaps();
+        const g = await loadGoogleMaps();
         const svc = new g.maps.DistanceMatrixService();
         svc.getDistanceMatrix(
           {
@@ -465,7 +469,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
             destinations: [{ lat, lng: lon }],
             travelMode: g.maps.TravelMode.DRIVING,
           },
-          (res: any, status: string) => {
+          (res: google.maps.DistanceMatrixResponse | null, status: google.maps.DistanceMatrixStatus) => {
             if (cancelled) return;
             if (status === "OK" && res?.rows?.[0]?.elements?.[0]?.status === "OK") {
               setDistanciaApi(res.rows[0].elements[0].distance.value / 1000);
@@ -630,7 +634,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
         metodoPagoFinal = metodoPagoEsperado;
       }
 
-      const payload = {
+      const payload: TablesInsert<"pedidos"> = {
         turno_id: turno.id,
         sucursal_id: turno.sucursal_id,
         tomador_id: perfil.id,
@@ -645,6 +649,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
         subtotal,
         descuento: desc,
         costo_despacho: costoDespacho,
+        costo_despacho_calculado: tipo === "delivery" ? costoDespachoCalc : null,
         total,
         metodo_pago: metodoPagoFinal,
         referencia_pago: referenciaPagoFinal,
@@ -719,7 +724,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
         }
         if (free > 0) {
           // Unidad “gratis” por jarros: precio = solo extras (el base va en pedidos.descuento)
-          const extrasPrecio = l.extras?.reduce((a, e) => a + e.precio, 0) ?? 0;
+          const extrasPrecio = precioTotalSabores(l.producto, l.extras);
           items.push({
             pedido_id: pedido.id,
             producto_id: l.producto.id,
@@ -813,7 +818,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
             cantidad: paid,
             nombre: l.producto.nombre,
             precio_unitario: pu,
-            extras: l.extras?.map((e) => ({ nombre: formatSaborExtra(e.nombre), precio: e.precio })),
+            extras: saboresConPrecioAplicable(l.producto, l.extras)?.map((e) => ({ nombre: formatSaborExtra(e.nombre), precio: e.precio })),
             notas: notasCliente,
             esRegalo: l.esRegalo,
             notaPromo: l.promoTipo ? `[PROMO ${l.promoTipo.toUpperCase()}]` : undefined,
@@ -821,12 +826,12 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
           });
         }
         if (free > 0) {
-          const extrasPrecio = l.extras?.reduce((a, e) => a + e.precio, 0) ?? 0;
+          const extrasPrecio = precioTotalSabores(l.producto, l.extras);
           arr.push({
             cantidad: free,
             nombre: l.producto.nombre,
             precio_unitario: extrasPrecio,
-            extras: l.extras?.map((e) => ({ nombre: formatSaborExtra(e.nombre), precio: e.precio })),
+            extras: saboresConPrecioAplicable(l.producto, l.extras)?.map((e) => ({ nombre: formatSaborExtra(e.nombre), precio: e.precio })),
             notas: notasCliente,
             esRegalo: extrasPrecio === 0,
             esPromoJarros: true,
@@ -1116,7 +1121,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                     ) : l.producto.esPrecioTrabajador && l.precioOriginal != null ? (
                       <span className="block leading-tight">
                         <span className="text-[10px] text-muted-foreground line-through">
-                          {fmtCLP((l.precioOriginal + (l.extras?.reduce((a, e) => a + e.precio, 0) ?? 0)) * l.cantidad)}
+                          {fmtCLP((l.precioOriginal + precioTotalSabores(l.producto, l.extras)) * l.cantidad)}
                         </span>
                         <span className="block text-success">
                           {fmtCLP(precioLinea(l) * l.cantidad)} 👷
@@ -1162,7 +1167,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                                   : "bg-muted/40 text-muted-foreground border-border hover:border-primary/60",
                               )}
                             >
-                              + {formatSaborExtra(s.nombre)} {fmtCLP(s.precio)}
+                              + {formatSaborExtra(s.nombre)} {fmtCLP(precioSaborParaProducto(l.producto, s))}
                             </button>
                           ))}
                         </div>
@@ -1189,7 +1194,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                     {l.extras.map((e) => (
                       <div key={e.id} className="flex items-center justify-between text-[11px] text-muted-foreground">
                         <span>+ {formatSaborExtra(e.nombre)}</span>
-                        <span className="font-mono">{fmtCLP(e.precio)}</span>
+                        <span className="font-mono">{fmtCLP(precioSaborParaProducto(l.producto, e))}</span>
                       </div>
                     ))}
                   </div>
@@ -1315,7 +1320,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                             .filter((l) => !l.esRegalo && l.cantidad > 0)
                             .map((l) => (
                               <SelectItem key={l.uid} value={l.uid}>
-                                {l.producto.nombre} ({fmtCLP(l.producto.precio + (l.extras?.reduce((a, e) => a + e.precio, 0) ?? 0))})
+                                {l.producto.nombre} ({fmtCLP(l.producto.precio + precioTotalSabores(l.producto, l.extras))})
                               </SelectItem>
                             ))
                         )}

@@ -1,6 +1,6 @@
 export interface InsumoStockFields {
-  unidades_por_formato: number | null;
-  ml_por_unidad: number | null;
+  unidades_por_formato?: number | null;
+  ml_por_unidad?: number | null;
   formato_mayor?: string | null;
   unidad?: string | null;
 }
