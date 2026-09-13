@@ -36,6 +36,14 @@ export function precioTotalSabores(
   return sabores?.reduce((total, sabor) => total + precioSaborParaProducto(producto, sabor), 0) ?? 0;
 }
 
+export function precioSinSabores(
+  producto: ProductoParaPrecioSabor,
+  precioUnitario: number,
+  sabores: SaborConPrecio[] | null | undefined,
+): number {
+  return Math.max(0, Number(precioUnitario) - precioTotalSabores(producto, sabores));
+}
+
 export function saboresConPrecioAplicable<T extends SaborConPrecio>(
   producto: ProductoParaPrecioSabor,
   sabores: T[] | null | undefined,

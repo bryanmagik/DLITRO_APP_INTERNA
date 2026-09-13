@@ -1,6 +1,7 @@
 import { formatSaborExtra, type ComandaItem, normalizarTipoComanda } from "@/lib/printComanda";
-import { saboresConPrecioAplicable } from "@/lib/precioSaboresExtra";
+import { normalizarNombreProducto, saboresConPrecioAplicable } from "@/lib/precioSaboresExtra";
 import type { PedidoImpresion } from "@/services/printer";
+import { pagoEsperadoDetalleFromPedido } from "@/lib/pagoEsperado";
 
 type PedidoItemRow = {
   cantidad: number;
@@ -81,6 +82,32 @@ export function parseItemNotas(notas: string | null | undefined): {
   };
 }
 
+/** Relaciona los nombres persistidos en pedido_items.notas con el catálogo vigente. */
+export function saboresCatalogoFromItemNotes<T extends { nombre: string }>(
+  notas: string | null | undefined,
+  catalogo: T[],
+): T[] {
+  const nombres = new Set(
+    parseItemNotas(notas).extras.map((extra) => normalizarNombreProducto(formatSaborExtra(extra.nombre))),
+  );
+  return catalogo.filter((sabor) => nombres.has(normalizarNombreProducto(formatSaborExtra(sabor.nombre))));
+}
+
+/** Cambia sabores/nota libre sin perder metadatos internos de promociones. */
+export function buildEditedItemNotes(input: {
+  originalNotes: string | null | undefined;
+  extras: { nombre: string }[];
+  userNote: string;
+}): string | null {
+  const parsed = parseItemNotas(input.originalNotes);
+  const customerNotes = buildNotasClienteDeItem({ extras: input.extras, notas: input.userNote });
+  return [
+    parsed.notaPromo,
+    parsed.precioOriginal == null ? null : `[PROMO_PRECIO:${parsed.precioOriginal}]`,
+    customerNotes,
+  ].filter(Boolean).join(" | ") || null;
+}
+
 export function comandaItemFromPedidoItem(
   row: {
     cantidad: number;
@@ -143,6 +170,9 @@ export type PedidoParaImpresion = {
   notas: string | null;
   metodo_pago?: string | null;
   pago_registrado?: boolean | null;
+  pago_esperado_efectivo?: number | null;
+  pago_esperado_transferencia?: number | null;
+  pago_esperado_tarjeta?: number | null;
   monto_recibido?: number | null;
   jarros_prometidos?: number | null;
   promo_tipo?: string | null;
@@ -188,6 +218,7 @@ export function buildPedidoImpresion(
       notas: pedido.notas,
       metodoPago: pedido.metodo_pago ?? null,
       pagoRegistrado: pedido.pago_registrado ?? false,
+      pagoEsperadoDetalle: pagoEsperadoDetalleFromPedido(pedido),
       montoRecibido: pedido.monto_recibido ?? null,
       promoLabel,
     },
@@ -206,6 +237,7 @@ export function buildPedidoImpresion(
       descuentoJarros,
       metodoPago: pedido.metodo_pago ?? null,
       pagoRegistrado: pedido.pago_registrado ?? false,
+      pagoEsperadoDetalle: pagoEsperadoDetalleFromPedido(pedido),
     },
   };
 }

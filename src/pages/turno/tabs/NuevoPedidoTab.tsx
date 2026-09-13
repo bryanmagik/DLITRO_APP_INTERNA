@@ -24,6 +24,15 @@ import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { loadGoogleMaps } from "@/lib/googleMaps";
 import { precioSaborParaProducto, precioTotalSabores, saboresConPrecioAplicable } from "@/lib/precioSaboresExtra";
 import type { TablesInsert } from "@/integrations/supabase/types";
+import { calculateDeliveryCost, haversineDistanceKm, type TarifaDespacho } from "@/lib/deliveryQuote";
+import {
+  buildPagoEsperadoDetalle,
+  METODOS_PAGO_ESPERADO,
+  pagoEsperadoColumns,
+  parseMontoPagoEsperado,
+  validarPagoEsperadoMixto,
+  type MetodoPagoEsperado,
+} from "@/lib/pagoEsperado";
 
 interface Categoria { id: string; nombre: string; orden: number | null }
 interface Producto {
@@ -63,29 +72,6 @@ function calcularTragosGratisJarros(lineas: Linea[], seleccion: string[]) {
 
 const fmtCLP = (n: number) =>
   new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(n);
-
-function haversine(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371, toRad = (x: number) => (x * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
-function calcCostoDespacho(km: number) {
-  const base = 2000, tramo = 3.5, extra = 1000;
-  if (km <= tramo) return base;
-  return base + Math.ceil((km - tramo) / tramo) * extra;
-}
-
-type TarifaDespacho = { distancia_desde: number; distancia_hasta: number; precio: number; tramo: number };
-
-function calcCostoDespachoTarifas(km: number, tarifas: TarifaDespacho[]): number {
-  if (!tarifas.length) return calcCostoDespacho(km);
-  const sorted = [...tarifas].sort((a, b) => a.tramo - b.tramo);
-  const match = sorted.find((t) => km >= Number(t.distancia_desde) && km < Number(t.distancia_hasta));
-  if (match) return match.precio;
-  // Si supera el último tramo, usar el último tramo como precio base
-  return sorted[sorted.length - 1]?.precio ?? calcCostoDespacho(km);
-}
 
 // Imagen fallback por nombre de categoría
 function imagenCategoria(nombreCat: string | undefined): string {
@@ -149,7 +135,10 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
   const [jarraDoradaTragoId, setJarraDoradaTragoId] = useState<string>("");
 
   const [yaPago, setYaPago] = useState(false);
-  const [metodoPagoEsperado, setMetodoPagoEsperado] = useState<"efectivo" | "transferencia" | "tarjeta" | null>(null);
+  const [metodosPagoEsperados, setMetodosPagoEsperados] = useState<Set<MetodoPagoEsperado>>(new Set());
+  const [pagoEsperadoEf, setPagoEsperadoEf] = useState("");
+  const [pagoEsperadoTr, setPagoEsperadoTr] = useState("");
+  const [pagoEsperadoTa, setPagoEsperadoTa] = useState("");
   const [pagoMixtoEf, setPagoMixtoEf] = useState("");
   const [pagoMixtoTr, setPagoMixtoTr] = useState("");
   const [pagoMixtoTa, setPagoMixtoTa] = useState("");
@@ -488,12 +477,12 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
     if (distanciaApi != null) return distanciaApi;
     const lat = parseFloat(latStr), lon = parseFloat(lonStr);
     if (!sucursal?.latitud || !sucursal?.longitud || Number.isNaN(lat) || Number.isNaN(lon)) return 0;
-    return haversine(Number(sucursal.latitud), Number(sucursal.longitud), lat, lon);
+    return haversineDistanceKm(Number(sucursal.latitud), Number(sucursal.longitud), lat, lon);
   }, [tipo, latStr, lonStr, sucursal, distanciaApi]);
 
   const costoDespachoCalc = useMemo(() => {
     if (tipo !== "delivery" || !distanciaKm) return 0;
-    return calcCostoDespachoTarifas(distanciaKm, tarifasDespacho);
+    return calculateDeliveryCost(distanciaKm, tarifasDespacho);
   }, [tipo, distanciaKm, tarifasDespacho]);
 
   useEffect(() => {
@@ -521,6 +510,42 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
   const totalIngresadoYaPago = pagoYaEf + pagoYaTr + pagoYaTa;
   const diffYaPago = totalIngresadoYaPago - total;
   const pagoYaCuadra = !yaPago || esExterno || (totalIngresadoYaPago > 0 && totalIngresadoYaPago >= total);
+  const metodosEsperadosSeleccionados = METODOS_PAGO_ESPERADO.filter((metodo) => metodosPagoEsperados.has(metodo));
+  const montosPagoEsperado = {
+    efectivo: parseMontoPagoEsperado(pagoEsperadoEf) ?? Number.NaN,
+    transferencia: parseMontoPagoEsperado(pagoEsperadoTr) ?? Number.NaN,
+    tarjeta: parseMontoPagoEsperado(pagoEsperadoTa) ?? Number.NaN,
+  };
+  const errorPagoEsperado = !yaPago
+    ? validarPagoEsperadoMixto(metodosEsperadosSeleccionados, montosPagoEsperado, total)
+    : null;
+  const detallePagoEsperado = !yaPago && !errorPagoEsperado
+    ? buildPagoEsperadoDetalle(metodosEsperadosSeleccionados, montosPagoEsperado, total)
+    : [];
+  const totalPagoEsperadoIngresado = metodosEsperadosSeleccionados.reduce((sum, metodo) => {
+    const monto = montosPagoEsperado[metodo];
+    return sum + (Number.isFinite(monto) ? monto : 0);
+  }, 0);
+
+  const limpiarMontoPagoEsperado = (metodo: MetodoPagoEsperado) => {
+    if (metodo === "efectivo") setPagoEsperadoEf("");
+    if (metodo === "transferencia") setPagoEsperadoTr("");
+    if (metodo === "tarjeta") setPagoEsperadoTa("");
+  };
+
+  const toggleMetodoPagoEsperado = (metodo: MetodoPagoEsperado) => {
+    const estabaSeleccionado = metodosPagoEsperados.has(metodo);
+    if (estabaSeleccionado) limpiarMontoPagoEsperado(metodo);
+    setMetodosPagoEsperados((current) => {
+      const next = new Set(current);
+      if (next.has(metodo)) {
+        next.delete(metodo);
+      } else {
+        next.add(metodo);
+      }
+      return next;
+    });
+  };
 
   // Sincronizar largo de selección con cantidad de tragos gratis derivada de jarros
   useEffect(() => {
@@ -556,7 +581,8 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
     setCanjeAprobado(false); setCanjeCodigo(""); setCanjeTragosIds([""]);
     setJarraDoradaTragoId("");
     setYaPago(false);
-    setMetodoPagoEsperado(null);
+    setMetodosPagoEsperados(new Set());
+    setPagoEsperadoEf(""); setPagoEsperadoTr(""); setPagoEsperadoTa("");
     pagoMixtoTrRefTouched.current = false;
     setPagoMixtoEf(""); setPagoMixtoTr(""); setPagoMixtoTa(""); setPagoMixtoTrRef("");
   };
@@ -573,7 +599,17 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
   const removeRegalo = (promoTipo: PromoTipo) => setLineas((prev) => prev.filter((l) => l.promoTipo !== promoTipo));
 
   useEffect(() => {
-    if (esExterno) { removeRegalo("cumpleanos"); removeRegalo("canje"); removeRegalo("jarra_dorada"); setYaPago(false); setMetodoPagoEsperado(null); return; }
+    if (esExterno) {
+      removeRegalo("cumpleanos");
+      removeRegalo("canje");
+      removeRegalo("jarra_dorada");
+      setYaPago(false);
+      setMetodosPagoEsperados(new Set());
+      setPagoEsperadoEf("");
+      setPagoEsperadoTr("");
+      setPagoEsperadoTa("");
+      return;
+    }
     if (esCumple && cumpleTragoId) addRegalo(cumpleTragoId, "cumpleanos");
     else removeRegalo("cumpleanos");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -616,6 +652,10 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
       if (totalIngresadoYaPago <= 0) { toast.error("Ingresá al menos un monto de pago"); return; }
       if (totalIngresadoYaPago < total) { toast.error(`Falta ${fmtCLP(total - totalIngresadoYaPago)}`); return; }
     }
+    if (!esExterno && !yaPago && errorPagoEsperado) {
+      toast.error(errorPagoEsperado);
+      return;
+    }
     setSaving(true);
     try {
       const horaAgendadaIso = horaAgendada ? new Date(horaAgendada).toISOString() : null;
@@ -630,9 +670,13 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
           : pagoYaTa > 0 && pagoYaEf === 0 && pagoYaTr === 0 ? "tarjeta"
           : "mixto";
         referenciaPagoFinal = pagoYaTr > 0 ? (pagoMixtoTrRef.trim() || null) : null;
-      } else if (!esExterno && metodoPagoEsperado) {
-        metodoPagoFinal = metodoPagoEsperado;
+      } else if (!esExterno && metodosEsperadosSeleccionados.length === 1) {
+        metodoPagoFinal = metodosEsperadosSeleccionados[0];
+      } else if (!esExterno && metodosEsperadosSeleccionados.length > 1) {
+        metodoPagoFinal = "mixto";
       }
+
+      const columnasPagoEsperado = pagoEsperadoColumns(!esExterno && !yaPago ? detallePagoEsperado : []);
 
       const payload: TablesInsert<"pedidos"> = {
         turno_id: turno.id,
@@ -652,6 +696,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
         costo_despacho_calculado: tipo === "delivery" ? costoDespachoCalc : null,
         total,
         metodo_pago: metodoPagoFinal,
+        ...columnasPagoEsperado,
         referencia_pago: referenciaPagoFinal,
         pago_registrado: !esExterno && yaPago,
         hora_agendada: horaAgendadaIso,
@@ -683,7 +728,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
       if (!esExterno) {
         const necesitaRefAuto =
           (yaPago && pagoYaTr > 0 && !pagoMixtoTrRef.trim()) ||
-          (!yaPago && metodoPagoEsperado === "transferencia" && !referenciaPagoFinal);
+          (!yaPago && metodosPagoEsperados.has("transferencia") && !referenciaPagoFinal);
         if (necesitaRefAuto) {
           const autoRef = referenciaPagoTransferencia(pedido.numero_pedido);
           if (autoRef) {
@@ -856,6 +901,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
           notas: [notas.trim() || null, horaAgendadaIso ? `Agendado para ${new Date(horaAgendada).toLocaleString("es-CL")}` : null].filter(Boolean).join(" · ") || null,
           metodoPago: metodoPagoFinal,
           pagoRegistrado: !esExterno && yaPago,
+          pagoEsperadoDetalle: detallePagoEsperado,
         },
         cocina: {
           numero: pedido.numero_pedido,
@@ -872,6 +918,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
           descuentoJarros: descuentoJarrosSobrantes + descuentoJarrosTragos,
           metodoPago: metodoPagoFinal,
           pagoRegistrado: !esExterno && yaPago,
+          pagoEsperadoDetalle: detallePagoEsperado,
         },
       };
 
@@ -1469,12 +1516,12 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                   { v: "transferencia" as const, label: "Transferencia", Icon: Landmark },
                   { v: "tarjeta" as const, label: "Tarjeta", Icon: CreditCard },
                 ]).map(({ v, label, Icon }) => {
-                  const active = metodoPagoEsperado === v;
+                  const active = metodosPagoEsperados.has(v);
                   return (
                     <button
                       key={v}
                       type="button"
-                      onClick={() => setMetodoPagoEsperado(active ? null : v)}
+                      onClick={() => toggleMetodoPagoEsperado(v)}
                       className={cn(
                         "flex flex-col items-center justify-center gap-1 h-12 rounded-lg border text-xs font-bold uppercase tracking-wider transition",
                         active
@@ -1488,6 +1535,45 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                   );
                 })}
               </div>
+              {metodosEsperadosSeleccionados.length > 1 && (
+                <div className="space-y-2 pt-2 border-t border-border">
+                  <p className="text-xs text-muted-foreground">
+                    Indica cuánto deberá recibir el despachador en cada método.
+                  </p>
+                  {metodosEsperadosSeleccionados.map((metodo) => {
+                    const config = metodo === "efectivo"
+                      ? { label: "Efectivo", value: pagoEsperadoEf, setValue: setPagoEsperadoEf, Icon: Banknote }
+                      : metodo === "transferencia"
+                        ? { label: "Transferencia", value: pagoEsperadoTr, setValue: setPagoEsperadoTr, Icon: Landmark }
+                        : { label: "Tarjeta", value: pagoEsperadoTa, setValue: setPagoEsperadoTa, Icon: CreditCard };
+                    return (
+                      <div key={metodo} className="grid grid-cols-[minmax(0,1fr)_9rem] items-center gap-2">
+                        <Label htmlFor={`pago-esperado-${metodo}`} className="text-xs flex items-center gap-1.5">
+                          <config.Icon className="h-3.5 w-3.5" /> {config.label}
+                        </Label>
+                        <Input
+                          id={`pago-esperado-${metodo}`}
+                          type="number"
+                          min="1"
+                          step="1"
+                          inputMode="numeric"
+                          value={config.value}
+                          onChange={(event) => config.setValue(event.target.value)}
+                          placeholder="0"
+                          className="bg-card font-mono h-9"
+                        />
+                      </div>
+                    );
+                  })}
+                  <div className="space-y-1 pt-2 border-t border-border text-xs" aria-live="polite">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total distribuido</span>
+                      <span className="font-mono">{fmtCLP(totalPagoEsperadoIngresado)} / {fmtCLP(total)}</span>
+                    </div>
+                    {errorPagoEsperado && <p className="text-destructive font-medium" role="alert">{errorPagoEsperado}</p>}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1499,7 +1585,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
             <Button
               type="button"
               variant="secondary"
-              disabled={saving || lineas.length === 0 || (yaPago && !pagoYaCuadra)}
+              disabled={saving || lineas.length === 0 || (yaPago && !pagoYaCuadra) || (!yaPago && !!errorPagoEsperado)}
               onClick={submit}
               className="h-12 font-bold uppercase text-xs flex-col gap-0.5"
             >
@@ -1507,7 +1593,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
             </Button>
             <Button
               type="button"
-              disabled={saving || lineas.length === 0 || (yaPago && !pagoYaCuadra)}
+              disabled={saving || lineas.length === 0 || (yaPago && !pagoYaCuadra) || (!yaPago && !!errorPagoEsperado)}
               onClick={submit}
               className={cn(
                 "h-12 font-bold uppercase text-xs flex-col gap-0.5",

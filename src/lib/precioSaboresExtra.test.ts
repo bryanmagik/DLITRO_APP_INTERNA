@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildNotasClienteDeItem, comandaItemFromPedidoItem } from "@/lib/pedidoImpresion";
+import {
+  buildEditedItemNotes,
+  buildNotasClienteDeItem,
+  comandaItemFromPedidoItem,
+  saboresCatalogoFromItemNotes,
+} from "@/lib/pedidoImpresion";
 import {
   cobraRecargoPorSabor,
   normalizarNombreProducto,
+  precioSinSabores,
   precioTotalSabores,
   saboresConPrecioAplicable,
 } from "@/lib/precioSaboresExtra";
@@ -65,5 +71,28 @@ describe("precio de sabores extra", () => {
     expect(cobraRecargoPorSabor({ nombre: "Mojito Corona Especial" })).toBe(true);
     expect(saboresConPrecioAplicable({ nombre: "Mójito Corona" }, [sabor]))
       .toEqual([{ nombre: "Frambuesa", precio: 0 }]);
+  });
+
+  it("recupera los sabores guardados para editar un ítem existente", () => {
+    const catalogo = [
+      { id: "fr", nombre: "Pulpa de Frambuesa", precio: 1000 },
+      { id: "ma", nombre: "Mango", precio: 1000 },
+    ];
+    expect(saboresCatalogoFromItemNotes("Extras: Frambuesa | sin hielo", catalogo))
+      .toEqual([catalogo[0]]);
+  });
+
+  it("edita sabores y nota libre sin perder las etiquetas de promoción", () => {
+    expect(buildEditedItemNotes({
+      originalNotes: "[PROMO CUMPLEANOS] | [PROMO_PRECIO:9000] | Extras: Mango | sin hielo",
+      extras: [{ nombre: "Pulpa de Frambuesa" }],
+      userNote: "extra menta",
+    })).toBe("[PROMO CUMPLEANOS] | [PROMO_PRECIO:9000] | Extras: Frambuesa | extra menta");
+  });
+
+  it("recalcula desde el precio cobrado sin duplicar recargos anteriores", () => {
+    const producto = { nombre: "Mojito Tradicional" };
+    expect(precioSinSabores(producto, 9000, [{ nombre: "Mango", precio: 1000 }])).toBe(8000);
+    expect(precioSinSabores({ nombre: "Mojito Corona" }, 8000, [{ nombre: "Mango", precio: 1000 }])).toBe(8000);
   });
 });

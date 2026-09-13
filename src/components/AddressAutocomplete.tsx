@@ -11,6 +11,7 @@ type Suggestion = google.maps.places.AutocompleteSuggestion;
 type PlaceLocation = google.maps.LatLng | { lat: number; lng: number };
 
 interface Props {
+  id?: string;
   value: string;
   onChange: (v: string) => void;
   onSelect: (data: { address: string; lat: number; lng: number }) => void;
@@ -18,10 +19,11 @@ interface Props {
   className?: string;
   hasError?: boolean;
   regionCode?: string;
+  disabled?: boolean;
 }
 
 export default function AddressAutocomplete({
-  value, onChange, onSelect, placeholder, className, hasError, regionCode = "cl",
+  id, value, onChange, onSelect, placeholder, className, hasError, regionCode = "cl", disabled = false,
 }: Props) {
   const [mapsOk, setMapsOk] = useState<boolean | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -175,6 +177,7 @@ export default function AddressAutocomplete({
     return (
       <div className="relative">
         <Input
+          id={id}
           value={value}
           disabled
           placeholder="Cargando mapas…"
@@ -188,7 +191,9 @@ export default function AddressAutocomplete({
   if (mapsOk === false) {
     return (
       <Input
+        id={id}
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder ?? "Dirección de envío (manual)"}
         maxLength={200}
@@ -200,7 +205,9 @@ export default function AddressAutocomplete({
   return (
     <div className="relative">
       <input
+        id={id}
         value={value}
+        disabled={disabled}
         onChange={(e) => handleInput(e.target.value)}
         onBlur={abandonSearch}
         onFocus={() => {

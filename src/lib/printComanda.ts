@@ -1,3 +1,5 @@
+import type { PagoEsperadoDetalle } from "@/lib/pagoEsperado";
+
 export function formatSaborExtra(nombre: string): string {
   return nombre.replace(/^Pulpa de /i, "");
 }
@@ -54,6 +56,7 @@ export interface ComandaData {
   notas?: string | null;
   metodoPago?: string | null;
   pagoRegistrado?: boolean;
+  pagoEsperadoDetalle?: PagoEsperadoDetalle[];
   montoRecibido?: number | null;
   editado?: boolean;
 }
@@ -143,6 +146,11 @@ function bloquePagoComandaToma(d: ComandaData): string[] {
     out.push(`OK PAGADO: ${metodo}`);
   } else {
     out.push(`PAGO ESPERADO: ${metodo}`);
+    if ((d.pagoEsperadoDetalle?.length ?? 0) > 1) {
+      for (const item of d.pagoEsperadoDetalle ?? []) {
+        out.push(alinearDerecha(`  ${labelMetodoPago(item.metodo) ?? item.metodo}:`, fmtPrecio(item.monto)));
+      }
+    }
   }
   return out;
 }
@@ -155,8 +163,13 @@ function bloquePagoComandaHtml(d: ComandaData): string {
 ✓ PAGADO: ${escapeHtml(metodo)}
 ${SUB}</pre>`;
   }
+  const detalle = (d.pagoEsperadoDetalle?.length ?? 0) > 1
+    ? `\n${d.pagoEsperadoDetalle?.map((item) =>
+      alinearDerecha(`  ${labelMetodoPago(item.metodo) ?? item.metodo}:`, fmtPrecio(item.monto))
+    ).join("\n")}`
+    : "";
   return `<pre>${SUB}
-PAGO ESPERADO: ${escapeHtml(metodo)}
+PAGO ESPERADO: ${escapeHtml(metodo)}${escapeHtml(detalle)}
 ${SUB}</pre>`;
 }
 
@@ -529,6 +542,7 @@ export interface ComandaCocinaData {
   descuentoJarros?: number | null;
   metodoPago?: string | null;
   pagoRegistrado?: boolean | null;
+  pagoEsperadoDetalle?: PagoEsperadoDetalle[];
 }
 
 /** Bloque TOTAL / pago para comanda cocina (ASCII, 42 cols). No usar en Uber/Rappi. */
@@ -551,6 +565,11 @@ function bloquePagoCocina(d: ComandaCocinaData): string[] {
     out.push(toAscii(metodo ? `YA PAGADO - ${metodo}` : "YA PAGADO"));
   } else {
     out.push(toAscii(`PAGO: ${metodo ?? "POR DEFINIR"}`));
+    if ((d.pagoEsperadoDetalle?.length ?? 0) > 1) {
+      for (const item of d.pagoEsperadoDetalle ?? []) {
+        out.push(alinearDerecha(`  ${labelMetodoPago(item.metodo) ?? item.metodo}:`, fmtPrecio(item.monto)));
+      }
+    }
   }
   out.push(SEP);
   return out;

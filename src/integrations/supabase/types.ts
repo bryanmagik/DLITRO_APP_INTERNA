@@ -876,6 +876,9 @@ export type Database = {
           numero_pedido: number | null
           numero_pedido_global: number | null
           origen: string
+          pago_esperado_efectivo: number | null
+          pago_esperado_tarjeta: number | null
+          pago_esperado_transferencia: number | null
           pago_registrado: boolean | null
           promo_tipo: Database["public"]["Enums"]["tipo_promo"] | null
           referencia_entrega: string | null
@@ -921,6 +924,9 @@ export type Database = {
           numero_pedido?: number | null
           numero_pedido_global?: number | null
           origen?: string
+          pago_esperado_efectivo?: number | null
+          pago_esperado_tarjeta?: number | null
+          pago_esperado_transferencia?: number | null
           pago_registrado?: boolean | null
           promo_tipo?: Database["public"]["Enums"]["tipo_promo"] | null
           referencia_entrega?: string | null
@@ -966,6 +972,9 @@ export type Database = {
           numero_pedido?: number | null
           numero_pedido_global?: number | null
           origen?: string
+          pago_esperado_efectivo?: number | null
+          pago_esperado_tarjeta?: number | null
+          pago_esperado_transferencia?: number | null
           pago_registrado?: boolean | null
           promo_tipo?: Database["public"]["Enums"]["tipo_promo"] | null
           referencia_entrega?: string | null

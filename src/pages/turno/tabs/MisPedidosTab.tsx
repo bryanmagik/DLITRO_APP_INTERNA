@@ -18,15 +18,34 @@ import type { Turno } from "../TurnoPage";
 import { formatSaborExtra } from "@/lib/printComanda";
 import SeleccionImpresionModal from "@/components/SeleccionImpresionModal";
 import type { ComandaItem } from "@/lib/printComanda";
-import { comandaItemFromPedidoItem } from "@/lib/pedidoImpresion";
+import {
+  buildEditedItemNotes,
+  comandaItemFromPedidoItem,
+  parseItemNotas,
+  saboresCatalogoFromItemNotes,
+} from "@/lib/pedidoImpresion";
 import { referenciaPagoTransferencia } from "@/lib/referenciaPago";
 import { calcularDescuentoJarros } from "@/lib/descuentoJarros";
 import { TIPO_META, type TipoPedido } from "@/lib/tiposPedido";
 import { PromoPedidoBadge, DesglosePrecioPedido, tienePromo, esPedidoTrabajador } from "@/lib/promoPedido";
 import { cn } from "@/lib/utils";
-import { cobraRecargoPorSabor, precioSaborParaProducto, precioTotalSabores } from "@/lib/precioSaboresExtra";
+import {
+  cobraRecargoPorSabor,
+  precioSaborParaProducto,
+  precioSinSabores,
+  precioTotalSabores,
+} from "@/lib/precioSaboresExtra";
 import { CorreccionPedidoEntregado } from "@/components/pedidos/CorreccionPedidoEntregado";
 import { AjusteCostoDespacho } from "@/components/pedidos/AjusteCostoDespacho";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
+import { loadGoogleMaps } from "@/lib/googleMaps";
+import {
+  buildDeliveryLocationFields,
+  calculateDeliveryCost,
+  hasValidDeliveryCoordinates,
+  haversineDistanceKm,
+  type TarifaDespacho,
+} from "@/lib/deliveryQuote";
 
 type Estado = "en_preparacion" | "listo" | "en_despacho" | "entregado" | "cancelado";
 
@@ -50,7 +69,12 @@ interface Pedido {
   costo_despacho: number | null;
   costo_despacho_calculado: number | null;
   distancia_km: number | null;
+  latitud_entrega: number | null;
+  longitud_entrega: number | null;
   metodo_pago: string | null;
+  pago_esperado_efectivo: number | null;
+  pago_esperado_transferencia: number | null;
+  pago_esperado_tarjeta: number | null;
   monto_recibido: number | null;
   vuelto: number | null;
   referencia_pago: string | null;
@@ -72,6 +96,7 @@ interface Item { id: string; cantidad: number; precio_unitario: number; subtotal
 interface ProductoCat { id: string; nombre: string; precio: number; categoria_id: string | null; activo: boolean | null }
 interface CategoriaCat { id: string; nombre: string; orden: number | null }
 interface SaborExtra { id: string; nombre: string; precio: number }
+interface SucursalUbicacion { latitud: number | null; longitud: number | null }
 interface EditItem {
   id?: string;            // existing pedido_items.id
   producto_id: string;
@@ -79,6 +104,9 @@ interface EditItem {
   precio_unitario: number;
   /** Precio catálogo sin extras (para descuento jarros). */
   precio_base?: number | null;
+  /** Importe realmente cobrado antes de sabores; puede incluir una promoción. */
+  precio_sin_sabores: number;
+  sabor_extra_ids: string[];
   cantidad: number;
   descuento_item?: number | null;
   notas?: string | null;
@@ -93,6 +121,7 @@ const ESTADO_META: Record<Estado, { label: string; cls: string; col: string; sig
 };
 
 const esPedidoExterno = (tipo: string) => tipo === "uber" || tipo === "rappi";
+const esTipoDespacho = (tipo: string) => tipo === "despacho" || tipo === "delivery";
 
 const LABEL_METODO_PAGO: Record<string, string> = {
   efectivo: "Efectivo",
@@ -244,7 +273,7 @@ export default function MisPedidosTab({ turno }: { turno: Turno }) {
   const cargar = async () => {
     const { data } = await supabase
       .from("pedidos")
-      .select("id, numero_pedido, cliente_nombre, cliente_telefono, tipo, estado, total, subtotal, descuento, costo_despacho, costo_despacho_calculado, distancia_km, metodo_pago, monto_recibido, vuelto, referencia_pago, direccion_entrega, referencia_entrega, despachador_id, notas, created_at, updated_at, hora_agendada, jarros_prometidos, jarros_entregados, promo_tipo, cupon_id, pago_registrado")
+      .select("id, numero_pedido, cliente_nombre, cliente_telefono, tipo, estado, total, subtotal, descuento, costo_despacho, costo_despacho_calculado, distancia_km, latitud_entrega, longitud_entrega, metodo_pago, pago_esperado_efectivo, pago_esperado_transferencia, pago_esperado_tarjeta, monto_recibido, vuelto, referencia_pago, direccion_entrega, referencia_entrega, despachador_id, notas, created_at, updated_at, hora_agendada, jarros_prometidos, jarros_entregados, promo_tipo, cupon_id, pago_registrado")
       .eq("turno_id", turno.id)
       .order("numero_pedido", { ascending: false });
     setPedidos(((data as Pedido[]) ?? []).map((p) => ({ ...p, estado: normalizarEstado(p.estado) })));
@@ -586,6 +615,7 @@ export default function MisPedidosTab({ turno }: { turno: Turno }) {
         onChanged={cargar}
         onReimprimir={reimprimir}
         onReimprimirEditado={reimprimirEditado}
+        sucursalId={turno.sucursal_id}
       />
       <SeleccionImpresionModal
         pedido={pedidoParaReimprimir}
@@ -609,7 +639,7 @@ export default function MisPedidosTab({ turno }: { turno: Turno }) {
 }
 
 function PedidoDetalleModal({
-  pedido, despachadores, open, onClose, onChanged, onReimprimir, onReimprimirEditado,
+  pedido, despachadores, open, onClose, onChanged, onReimprimir, onReimprimirEditado, sucursalId,
 }: {
   pedido: Pedido | null;
   despachadores: Despachador[];
@@ -618,6 +648,7 @@ function PedidoDetalleModal({
   onChanged: () => void;
   onReimprimir: (p: Pedido) => void;
   onReimprimirEditado: (p: Pedido, items: ComandaItem[], removed: ComandaItem[]) => void;
+  sucursalId: string;
 }) {
   const [items, setItems] = useState<EditItem[]>([]);
   const [originalItemIds, setOriginalItemIds] = useState<string[]>([]);
@@ -633,11 +664,20 @@ function PedidoDetalleModal({
   const [sabores, setSabores] = useState<SaborExtra[]>([]);
   const [extrasFor, setExtrasFor] = useState<ProductoCat | null>(null);
   const [extrasSel, setExtrasSel] = useState<Set<string>>(new Set());
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
+  const [editingExtrasSel, setEditingExtrasSel] = useState<Set<string>>(new Set());
+  const [editingItemNote, setEditingItemNote] = useState("");
 
   const [cNombre, setCNombre] = useState("");
   const [cTel, setCTel] = useState("");
   const [dir, setDir] = useState("");
   const [ref, setRef] = useState("");
+  const [latitud, setLatitud] = useState<number | null>(null);
+  const [longitud, setLongitud] = useState<number | null>(null);
+  const [ubicacionModificada, setUbicacionModificada] = useState(false);
+  const [distanciaApi, setDistanciaApi] = useState<number | null>(null);
+  const [sucursalUbicacion, setSucursalUbicacion] = useState<SucursalUbicacion | null>(null);
+  const [tarifasDespacho, setTarifasDespacho] = useState<TarifaDespacho[]>([]);
   const [despId, setDespId] = useState<string>("__none__");
   const [notas, setNotas] = useState("");
   const [tipo, setTipo] = useState<"despacho" | "retiro">("despacho");
@@ -671,6 +711,13 @@ function PedidoDetalleModal({
     setCTel(pedido.cliente_telefono ?? "");
     setDir(pedido.direccion_entrega ?? "");
     setRef(pedido.referencia_entrega ?? "");
+    setLatitud(pedido.latitud_entrega);
+    setLongitud(pedido.longitud_entrega);
+    setUbicacionModificada(false);
+    setDistanciaApi(null);
+    setEditingItemIndex(null);
+    setEditingExtrasSel(new Set());
+    setEditingItemNote("");
     setDespId(pedido.despachador_id ?? "__none__");
     setNotas(pedido.notas ?? "");
     setTipo(familia(pedido.tipo) === "delivery" ? "despacho" : "retiro");
@@ -688,7 +735,7 @@ function PedidoDetalleModal({
     setLoading(true);
     (async () => {
       const entregado = normalizarEstado(pedido.estado) === "entregado";
-      const [itemsRes, prodRes, catRes, sxRes, pagosRes] = await Promise.all([
+      const [itemsRes, prodRes, catRes, sxRes, pagosRes, sucursalRes, tarifasRes] = await Promise.all([
         supabase
           .from("pedido_items")
           .select("id, cantidad, precio_unitario, descuento_item, notas, producto_id, producto:producto_id(nombre, precio)")
@@ -702,8 +749,18 @@ function PedidoDetalleModal({
               .select("metodo, monto, referencia")
               .eq("pedido_id", pedido.id)
           : Promise.resolve({ data: null }),
+        supabase
+          .from("sucursales")
+          .select("latitud,longitud")
+          .eq("id", sucursalId)
+          .maybeSingle(),
+        supabase
+          .from("tarifas_despacho")
+          .select("tramo,distancia_desde,distancia_hasta,precio")
+          .order("tramo"),
       ]);
       const prods = (prodRes.data as ProductoCat[]) ?? [];
+      const saboresDisponibles = (sxRes.data as SaborExtra[]) ?? [];
       const its = ((itemsRes.data as unknown as Array<{
         id: string;
         cantidad: number;
@@ -713,6 +770,12 @@ function PedidoDetalleModal({
         producto_id: string;
         producto: { nombre: string; precio: number } | null;
       }>) ?? []).map((r) => {
+        const nombreProducto = r.producto?.nombre ?? "—";
+        const extrasPersistidos = parseItemNotas(r.notas).extras;
+        const saboresPersistidos = saboresCatalogoFromItemNotes(r.notas, saboresDisponibles);
+        const saboresParaPrecio = saboresPersistidos.length === extrasPersistidos.length
+          ? saboresPersistidos
+          : extrasPersistidos;
         const precioBase =
           r.producto?.precio != null
             ? Number(r.producto.precio)
@@ -720,9 +783,11 @@ function PedidoDetalleModal({
         return {
           id: r.id,
           producto_id: r.producto_id,
-          nombre: r.producto?.nombre ?? "—",
+          nombre: nombreProducto,
           precio_unitario: r.precio_unitario,
           precio_base: precioBase,
+          precio_sin_sabores: precioSinSabores({ nombre: nombreProducto }, r.precio_unitario, saboresParaPrecio),
+          sabor_extra_ids: saboresPersistidos.map((sabor) => sabor.id),
           cantidad: r.cantidad,
           descuento_item: r.descuento_item,
           notas: r.notas,
@@ -734,13 +799,56 @@ function PedidoDetalleModal({
       setOriginalItemsSnapshot(its.map((i) => ({ ...i })));
       setProductos(prods);
       setCategorias((catRes.data as CategoriaCat[]) ?? []);
-      setSabores((sxRes.data as SaborExtra[]) ?? []);
+      setSabores(saboresDisponibles);
       const pagosActuales = ((pagosRes.data as PagoTurnoDetalle[] | null) ?? [])
         .filter((p) => Number(p.monto) > 0);
       setPagosDetalle(pagosActuales);
+      setSucursalUbicacion((sucursalRes.data as SucursalUbicacion | null) ?? null);
+      setTarifasDespacho((tarifasRes.data as unknown as TarifaDespacho[] | null) ?? []);
       setLoading(false);
     })();
-  }, [pedido]);
+  }, [pedido, sucursalId]);
+
+  useEffect(() => {
+    if (
+      tipo !== "despacho"
+      || !ubicacionModificada
+      || !hasValidDeliveryCoordinates(latitud, longitud)
+      || sucursalUbicacion?.latitud == null
+      || sucursalUbicacion?.longitud == null
+    ) {
+      setDistanciaApi(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const googleMaps = await loadGoogleMaps();
+        const service = new googleMaps.maps.DistanceMatrixService();
+        service.getDistanceMatrix(
+          {
+            origins: [{ lat: Number(sucursalUbicacion.latitud), lng: Number(sucursalUbicacion.longitud) }],
+            destinations: [{ lat: latitud!, lng: longitud! }],
+            travelMode: googleMaps.maps.TravelMode.DRIVING,
+          },
+          (response: google.maps.DistanceMatrixResponse | null, status: google.maps.DistanceMatrixStatus) => {
+            if (cancelled) return;
+            const element = response?.rows?.[0]?.elements?.[0];
+            setDistanciaApi(status === "OK" && element?.status === "OK"
+              ? element.distance.value / 1000
+              : null);
+          },
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.error("[distance matrix edición pedido]", error);
+          setDistanciaApi(null);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tipo, ubicacionModificada, latitud, longitud, sucursalUbicacion]);
 
   if (!pedido) return null;
   const meta = ESTADO_META[normalizarEstado(pedido.estado)];
@@ -753,12 +861,40 @@ function PedidoDetalleModal({
 
   const subtotal = items.reduce((acc, it) => acc + it.precio_unitario * it.cantidad, 0);
   // NO recalcular promos al editar. Total editado = pedido.total original + delta de items.
-  // Si se cambia a retiro se descuenta el costo de despacho original; si vuelve a despacho se respeta.
+  // Si cambia el tipo o la ubicación, se incorpora la nueva tarifa sin recalcular promociones.
   const costoDespachoOriginal = pedido.costo_despacho ?? 0;
-  const costoDespacho = tipo === "despacho" ? costoDespachoOriginal : 0;
+  const necesitaNuevaCotizacion = tipo === "despacho"
+    && (ubicacionModificada || !esTipoDespacho(pedido.tipo));
+  const distanciaEntrega = tipo !== "despacho"
+    ? null
+    : necesitaNuevaCotizacion && hasValidDeliveryCoordinates(latitud, longitud)
+      ? distanciaApi ?? (
+        sucursalUbicacion?.latitud != null && sucursalUbicacion?.longitud != null
+          ? haversineDistanceKm(
+            Number(sucursalUbicacion.latitud),
+            Number(sucursalUbicacion.longitud),
+            latitud!,
+            longitud!,
+          )
+          : null
+      )
+      : pedido.distancia_km;
+  const costoDespachoCalculado = distanciaEntrega != null && distanciaEntrega > 0
+    ? calculateDeliveryCost(distanciaEntrega, tarifasDespacho)
+    : 0;
+  const costoDespacho = tipo === "despacho"
+    ? (necesitaNuevaCotizacion ? costoDespachoCalculado : costoDespachoOriginal)
+    : 0;
   const deltaItems = subtotal - originalItemsTotal;
   const ajusteDespacho = costoDespacho - costoDespachoOriginal; // 0 salvo cambio a retiro
   const totalCalc = Math.max(0, pedido.total + deltaItems + ajusteDespacho);
+  const editingItem = editingItemIndex == null ? null : items[editingItemIndex] ?? null;
+  const editingItemExtras = editingItem == null
+    ? []
+    : sabores.filter((sabor) => editingExtrasSel.has(sabor.id));
+  const editingItemPrice = editingItem == null
+    ? 0
+    : editingItem.precio_sin_sabores + precioTotalSabores(editingItem, editingItemExtras);
 
   const cambiarCant = (idx: number, delta: number) => {
     setItems((prev) => prev
@@ -779,6 +915,8 @@ function PedidoDetalleModal({
       nombre: p.nombre,
       precio_unitario: precio,
       precio_base: p.precio,
+      precio_sin_sabores: p.precio,
+      sabor_extra_ids: extras.map((extra) => extra.id),
       cantidad: 1,
       notas: nota,
     }]);
@@ -795,8 +933,6 @@ function PedidoDetalleModal({
     if (catBusqueda && !p.nombre.toLowerCase().includes(catBusqueda.toLowerCase())) return false;
     return true;
   });
-
-  const esTipoDespacho = (t: string) => t === "despacho" || t === "delivery";
 
   const iniciarFlujoEntrega = async () => {
     if (!pedido?.id) { toast.error("Pedido sin ID, recargá la página"); return; }
@@ -1210,6 +1346,14 @@ function PedidoDetalleModal({
       toast.error("El pedido no puede quedar sin productos");
       return;
     }
+    if (tipo === "despacho" && !dir.trim()) {
+      toast.error("Ingresa la dirección de entrega");
+      return;
+    }
+    if (tipo === "despacho" && !hasValidDeliveryCoordinates(latitud, longitud)) {
+      toast.error("Selecciona la dirección desde las sugerencias de Google para ubicar el pedido en el mapa");
+      return;
+    }
     setSaving(true);
     // 1) Reconciliar items: eliminar quitados, insertar nuevos, actualizar cantidades.
     // Se omite por completo si la comanda está bloqueada (en_despacho/entregado/
@@ -1221,6 +1365,15 @@ function PedidoDetalleModal({
     const removidos = itemsLocked ? [] : originalItemIds.filter((id) => !currentIds.includes(id));
     const removedSnap = itemsLocked ? [] : originalItemsSnapshot.filter((o) => o.id && !currentIds.includes(o.id));
     const addedNow = itemsLocked ? [] : items.filter((i) => !i.id);
+    const modifiedNow = itemsLocked ? [] : items.filter((item) => {
+      if (!item.id) return false;
+      const original = originalItemsSnapshot.find((candidate) => candidate.id === item.id);
+      return original != null && (
+        original.cantidad !== item.cantidad
+        || original.precio_unitario !== item.precio_unitario
+        || (original.notas ?? null) !== (item.notas ?? null)
+      );
+    });
     if (!itemsLocked) {
       if (removidos.length > 0) {
         const { error: delErr } = await supabase.from("pedido_items").delete().in("id", removidos);
@@ -1230,7 +1383,9 @@ function PedidoDetalleModal({
         if (it.id) {
           const { error: upErr } = await supabase.from("pedido_items").update({
             cantidad: it.cantidad,
+            precio_unitario: it.precio_unitario,
             subtotal: it.precio_unitario * it.cantidad,
+            notas: it.notas ?? null,
           }).eq("id", it.id);
           if (upErr) { setSaving(false); toast.error(upErr.message); return; }
         } else {
@@ -1246,23 +1401,34 @@ function PedidoDetalleModal({
         }
       }
     }
-    const hayCambios = addedNow.length > 0 || removedSnap.length > 0;
+    const hayCambios = addedNow.length > 0 || removedSnap.length > 0 || modifiedNow.length > 0;
     const hhmm = new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
     const resumen = [
       ...addedNow.map((i) => `+${i.nombre}${i.cantidad > 1 ? ` x${i.cantidad}` : ""}`),
       ...removedSnap.map((i) => `-${i.nombre}${i.cantidad > 1 ? ` x${i.cantidad}` : ""}`),
+      ...modifiedNow.map((i) => `~${i.nombre}`),
     ].join(", ");
     const editLine = hayCambios ? `[EDITADO ${hhmm}] ${resumen}` : null;
     const baseNotas = notas.trim();
     const notasFinal = [baseNotas || null, editLine].filter(Boolean).join("\n") || null;
+    const ubicacionEntrega = buildDeliveryLocationFields({
+      tipo,
+      direccion: dir,
+      referencia: ref,
+      latitud,
+      longitud,
+      distanciaKm: distanciaEntrega,
+    });
     const { error } = await supabase.from("pedidos").update({
       cliente_nombre: cNombre.trim(),
       cliente_telefono: cTel.trim() || null,
       tipo,
-      direccion_entrega: tipo === "despacho" ? dir.trim() || null : null,
-      referencia_entrega: tipo === "despacho" ? ref.trim() || null : null,
+      ...ubicacionEntrega,
       despachador_id: tipo === "despacho" ? (despId === "__none__" ? null : despId) : null,
       costo_despacho: costoDespacho,
+      costo_despacho_calculado: tipo === "despacho"
+        ? (necesitaNuevaCotizacion ? costoDespachoCalculado : pedido.costo_despacho_calculado)
+        : null,
       notas: notasFinal,
       subtotal,
       total: totalCalc,
@@ -1299,15 +1465,47 @@ function PedidoDetalleModal({
       cliente_nombre: cNombre.trim(),
       cliente_telefono: cTel.trim() || null,
       tipo: tipo as TipoPedido,
-      direccion_entrega: tipo === "despacho" ? dir.trim() || null : null,
-      referencia_entrega: tipo === "despacho" ? ref.trim() || null : null,
+      ...ubicacionEntrega,
       despachador_id: tipo === "despacho" ? (despId === "__none__" ? null : despId) : null,
       costo_despacho: costoDespacho,
+      costo_despacho_calculado: tipo === "despacho"
+        ? (necesitaNuevaCotizacion ? costoDespachoCalculado : pedido.costo_despacho_calculado)
+        : null,
       notas: notasFinal,
       subtotal,
       total: totalCalc,
     };
     onReimprimirEditado(pedidoActualizado, itemsImpresion, removedImpresion);
+  };
+  const abrirEdicionItem = (idx: number) => {
+    const item = items[idx];
+    if (!item) return;
+    setEditingItemIndex(idx);
+    setEditingExtrasSel(new Set(item.sabor_extra_ids));
+    setEditingItemNote(parseItemNotas(item.notas).notaUsuario ?? "");
+  };
+  const cerrarEdicionItem = () => {
+    setEditingItemIndex(null);
+    setEditingExtrasSel(new Set());
+    setEditingItemNote("");
+  };
+  const guardarEdicionItem = () => {
+    if (editingItemIndex == null) return;
+    setItems((prev) => prev.map((item, idx) => {
+      if (idx !== editingItemIndex) return item;
+      const extras = sabores.filter((sabor) => editingExtrasSel.has(sabor.id));
+      return {
+        ...item,
+        precio_unitario: item.precio_sin_sabores + precioTotalSabores(item, extras),
+        sabor_extra_ids: extras.map((extra) => extra.id),
+        notas: buildEditedItemNotes({
+          originalNotes: item.notas,
+          extras,
+          userNote: editingItemNote,
+        }),
+      };
+    }));
+    cerrarEdicionItem();
   };
 
   const confirmarCancelar = async () => {
@@ -1397,6 +1595,17 @@ function PedidoDetalleModal({
                           </Button>
                         </div>
                         <div className="font-mono text-foreground w-20 text-right text-xs">{fmtCLP(it.precio_unitario * it.cantidad)}</div>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => abrirEdicionItem(idx)}
+                          aria-label={`Editar sabores e información de ${it.nombre}`}
+                          title="Editar sabores e información"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
                         <Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => eliminarItem(idx)}>
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -1536,12 +1745,37 @@ function PedidoDetalleModal({
               <div className="space-y-2">
                 <Label className="label-upper text-xs">Dirección</Label>
                 <Label htmlFor="pedido-direccion" className="text-xs">Dirección de entrega</Label>
-                <Input id="pedido-direccion" value={dir} onChange={(e) => setDir(e.target.value)} className="bg-background" disabled={pedidoCerrado} />
+                <AddressAutocomplete
+                  id="pedido-direccion"
+                  value={dir}
+                  onChange={(value) => {
+                    setDir(value);
+                    setLatitud(null);
+                    setLongitud(null);
+                    setDistanciaApi(null);
+                    setUbicacionModificada(true);
+                  }}
+                  onSelect={({ address, lat, lng }) => {
+                    setDir(address);
+                    setLatitud(lat);
+                    setLongitud(lng);
+                    setUbicacionModificada(true);
+                  }}
+                  placeholder="Busca y selecciona una dirección"
+                  hasError={!dir.trim() || !hasValidDeliveryCoordinates(latitud, longitud)}
+                  className="bg-background"
+                  disabled={pedidoCerrado}
+                />
+                {distanciaEntrega != null && distanciaEntrega > 0 && (
+                  <p className="text-xs font-mono text-muted-foreground">
+                    Distancia: {distanciaEntrega.toFixed(1)} km · Costo: {fmtCLP(costoDespacho)}
+                  </p>
+                )}
                 <Label htmlFor="pedido-referencia" className="text-xs">Referencia</Label>
                 <Input id="pedido-referencia" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Ej. portón azul" className="bg-background" disabled={pedidoCerrado} />
               </div>
             )}
-            {tipo === "despacho" && !pedidoCerrado && (
+            {tipo === "despacho" && !pedidoCerrado && esTipoDespacho(pedido.tipo) && !ubicacionModificada && (
               <AjusteCostoDespacho
                 pedido={pedido}
                 onSaved={() => {
@@ -1787,6 +2021,71 @@ function PedidoDetalleModal({
                 <div className="col-span-full text-center text-sm text-muted-foreground py-6">Sin resultados</div>
               )}
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edición de sabores e información de un producto existente */}
+        <Dialog open={editingItem != null} onOpenChange={(isOpen) => { if (!isOpen) cerrarEdicionItem(); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Pencil className="h-4 w-4" /> Editar {editingItem?.nombre}
+              </DialogTitle>
+            </DialogHeader>
+            {editingItem && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Sabores extra</Label>
+                  {sabores.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No hay sabores disponibles.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-1 max-h-64 overflow-auto">
+                      {sabores.map((sabor) => (
+                        <label
+                          key={sabor.id}
+                          className="flex items-center gap-2 p-2 rounded-md bg-background border border-border cursor-pointer hover:border-primary"
+                        >
+                          <Checkbox
+                            checked={editingExtrasSel.has(sabor.id)}
+                            onCheckedChange={() => setEditingExtrasSel((current) => {
+                              const next = new Set(current);
+                              if (next.has(sabor.id)) next.delete(sabor.id);
+                              else next.add(sabor.id);
+                              return next;
+                            })}
+                          />
+                          <span className="flex-1 text-sm">{formatSaborExtra(sabor.nombre)}</span>
+                          <span className="text-xs font-mono text-muted-foreground">
+                            {precioSaborParaProducto(editingItem, sabor) === 0
+                              ? "Sin recargo"
+                              : `+${fmtCLP(precioSaborParaProducto(editingItem, sabor))}`}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="pedido-item-nota" className="text-xs text-muted-foreground">Información del trago</Label>
+                  <Input
+                    id="pedido-item-nota"
+                    value={editingItemNote}
+                    onChange={(event) => setEditingItemNote(event.target.value)}
+                    placeholder="Ej: sin hielo, extra menta…"
+                    maxLength={200}
+                    className="bg-background"
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-md border border-border bg-background p-3 text-sm">
+                  <span className="text-muted-foreground">Nuevo precio unitario</span>
+                  <span className="font-mono font-semibold">{fmtCLP(editingItemPrice)}</span>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={cerrarEdicionItem}>Cancelar</Button>
+                  <Button type="button" onClick={guardarEdicionItem}>Guardar cambios</Button>
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
 

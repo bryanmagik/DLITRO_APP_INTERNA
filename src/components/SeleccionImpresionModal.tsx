@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { type ComandaItem, normalizarTipoComanda } from "@/lib/printComanda";
 import { buildComandaCocinaItems, comandaItemFromPedidoItem } from "@/lib/pedidoImpresion";
 import { reimprimirCocina, reimprimirToma } from "@/services/printer";
+import { pagoEsperadoDetalleFromPedido } from "@/lib/pagoEsperado";
 
 interface Pedido {
   id: string;
@@ -20,6 +21,9 @@ interface Pedido {
   costo_despacho: number | null;
   metodo_pago: string | null;
   pago_registrado: boolean | null;
+  pago_esperado_efectivo?: number | null;
+  pago_esperado_transferencia?: number | null;
+  pago_esperado_tarjeta?: number | null;
   monto_recibido: number | null;
   direccion_entrega: string | null;
   referencia_entrega: string | null;
@@ -121,6 +125,7 @@ export default function SeleccionImpresionModal({
           notas: pedido.notas,
           metodoPago: pedido.metodo_pago,
           pagoRegistrado: pedido.pago_registrado ?? false,
+          pagoEsperadoDetalle: pagoEsperadoDetalleFromPedido(pedido),
           montoRecibido: pedido.monto_recibido,
           promoLabel: pedido.promo_tipo === "trabajador" ? "PRECIO TRABAJADOR" : null,
           editado,
@@ -144,6 +149,7 @@ export default function SeleccionImpresionModal({
           descuentoJarros: (pedido.jarros_prometidos ?? 0) > 0 ? (pedido.descuento ?? 0) : 0,
           metodoPago: pedido.metodo_pago,
           pagoRegistrado: pedido.pago_registrado ?? false,
+          pagoEsperadoDetalle: pagoEsperadoDetalleFromPedido(pedido),
         });
       }
     } catch (e) {
