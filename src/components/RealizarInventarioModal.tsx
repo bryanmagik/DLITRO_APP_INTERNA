@@ -6,14 +6,26 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import InventarioInsumosTable, {
-  type InventarioRow,
+import {
+  INVENTARIO_SELECT,
+  ordenarInventario,
   calcCantidadReal,
   conteoTextoRow,
   filaCompleta,
+  type ConfigInventarioFields,
+} from "@/lib/inventarioOperativo";
+import InventarioInsumosTable, {
+  type InventarioRow,
 } from "./InventarioInsumosTable";
+import ConteoJarrosCard from "./ConteoJarrosCard";
+import { useAuthStore } from "@/stores/authStore";
+import {
+  CONTEO_JARROS_VACIO,
+  validarConteoJarros,
+  type ConteoJarrosForm,
+} from "@/lib/conteoJarros";
 
-interface Insumo {
+interface Insumo extends ConfigInventarioFields {
   id: string; nombre: string; unidad: string | null; tipo: string;
   formato_mayor: string | null; unidades_por_formato: number | null; ml_por_unidad: number | null;
 }
@@ -26,23 +38,32 @@ export default function RealizarInventarioModal({
   turnoId: string;
   sucursalId: string;
 }) {
+  const sucursalNombre = useAuthStore((state) => state.sucursalNombre);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [motivo, setMotivo] = useState("");
   const [inv, setInv] = useState<InventarioRow[]>([]);
+  const [conteoJarros, setConteoJarros] = useState<ConteoJarrosForm>(CONTEO_JARROS_VACIO);
 
   useEffect(() => {
     if (!open) return;
     setMotivo("");
+    setConteoJarros(CONTEO_JARROS_VACIO);
     let alive = true;
     (async () => {
       setLoading(true);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("insumos")
-        .select("id,nombre,unidad,tipo,formato_mayor,unidades_por_formato,ml_por_unidad")
-        .eq("activo", true).order("nombre");
+        .select(INVENTARIO_SELECT)
+        .eq("activo", true);
       if (!alive) return;
-      const insumos = (data as Insumo[]) ?? [];
+      if (error) {
+        toast.error("No se pudo cargar el catálogo de inventario");
+        setInv([]);
+        setLoading(false);
+        return;
+      }
+      const insumos = ordenarInventario((data as unknown as Insumo[]) ?? []);
       setInv(insumos.map((i) => ({
         insumo_id: i.id,
         nombre: i.nombre,
@@ -51,6 +72,14 @@ export default function RealizarInventarioModal({
         formato_mayor: i.formato_mayor ?? null,
         unidades_por_formato: i.unidades_por_formato != null ? Number(i.unidades_por_formato) : null,
         ml_por_unidad: i.ml_por_unidad != null ? Number(i.ml_por_unidad) : null,
+        seccion_inventario: i.seccion_inventario,
+        grupo_inventario: i.grupo_inventario,
+        presentacion_inventario: i.presentacion_inventario,
+        orden_visual: i.orden_visual,
+        orden_presentacion: i.orden_presentacion,
+        tipo_conteo: i.tipo_conteo,
+        paso_conteo: i.paso_conteo != null ? Number(i.paso_conteo) : null,
+        maximo_conteo: i.maximo_conteo != null ? Number(i.maximo_conteo) : null,
         cantidadReal: 0,
         contado: false,
       })));
@@ -62,11 +91,23 @@ export default function RealizarInventarioModal({
   const updateInv = (id: string, patch: Partial<Pick<InventarioRow, "cantidadReal" | "contado">>) =>
     setInv((prev) => prev.map((r) => r.insumo_id === id ? { ...r, ...patch } : r));
 
-  const todosListos = inv.length > 0 && inv.every(filaCompleta);
+  const contados = inv.filter(filaCompleta);
+  const conteoJarrosIniciado = Object.values(conteoJarros).some((value) => value.trim() !== "");
+  const conteoJarrosResult = validarConteoJarros(conteoJarros);
+  const conteoJarrosCompleto = conteoJarrosResult.value !== null;
+  const tieneAlgoParaGuardar = contados.length > 0 || conteoJarrosCompleto;
 
   const guardar = async () => {
     if (!motivo.trim()) {
       toast.error("Indicá el motivo del inventario");
+      return;
+    }
+    if (conteoJarrosIniciado && !conteoJarrosResult.value) {
+      toast.error(conteoJarrosResult.error);
+      return;
+    }
+    if (!tieneAlgoParaGuardar) {
+      toast.error("Ingresá al menos un insumo o completá el conteo de jarros");
       return;
     }
     setSaving(true);
@@ -79,18 +120,27 @@ export default function RealizarInventarioModal({
           sucursal_id: sucursalId,
           usuario_id: userRes.user?.id ?? null,
           motivo: motivo.trim(),
+          ...(conteoJarrosResult.value ? {
+            jarros_cajas_con_sticker: conteoJarrosResult.value.cajasConSticker,
+            jarros_cajas_sin_sticker: conteoJarrosResult.value.cajasSinSticker,
+            jarros_sueltos: conteoJarrosResult.value.jarrosSueltos,
+            jarros_rotos: conteoJarrosResult.value.jarrosRotos,
+            conteo_jarros_at: new Date().toISOString(),
+          } : {}),
         })
         .select("id")
         .single();
       if (e1) throw e1;
-      const items = inv.map((r) => ({
+      const items = contados.map((r) => ({
         inventario_id: (inv1 as { id: string }).id,
         insumo_id: r.insumo_id,
         cantidad_real: calcCantidadReal(r),
         conteo_original: conteoTextoRow(r),
       }));
-      const { error: e2 } = await supabase.from("inventarios_parciales_items").insert(items);
-      if (e2) throw e2;
+      if (items.length > 0) {
+        const { error: e2 } = await supabase.from("inventarios_parciales_items").insert(items);
+        if (e2) throw e2;
+      }
       toast.success("✅ Inventario guardado");
       onOpenChange(false);
     } catch (err: unknown) {
@@ -117,6 +167,12 @@ export default function RealizarInventarioModal({
               className="bg-card"
             />
           </div>
+          <ConteoJarrosCard
+            sucursalNombre={sucursalNombre ?? "Sucursal asignada"}
+            value={conteoJarros}
+            onChange={setConteoJarros}
+            disabled={saving}
+          />
           {loading ? (
             <div className="p-12 flex items-center justify-center text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando…
@@ -129,11 +185,17 @@ export default function RealizarInventarioModal({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button
             onClick={guardar}
-            disabled={!todosListos || saving || !motivo.trim()}
+            disabled={!tieneAlgoParaGuardar || (conteoJarrosIniciado && !conteoJarrosCompleto) || saving || !motivo.trim()}
             size="lg"
             className="bg-primary text-primary-foreground hover:bg-primary/90 uppercase tracking-wider font-bold px-8"
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Guardar inventario"}
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : conteoJarrosCompleto && contados.length === 0 ? (
+              "Guardar conteo de jarros"
+            ) : (
+              `Guardar ${contados.length} insumos${conteoJarrosCompleto ? " + jarros" : ""}`
+            )}
           </Button>
         </div>
       </DialogContent>

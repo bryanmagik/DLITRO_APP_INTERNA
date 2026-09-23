@@ -3,6 +3,9 @@ export interface InsumoStockFields {
   ml_por_unidad?: number | null;
   formato_mayor?: string | null;
   unidad?: string | null;
+  tipo_conteo?: string | null;
+  paso_conteo?: number | null;
+  maximo_conteo?: number | null;
 }
 
 /** DB (ml/gr) → UI (cajas + unidades) */
@@ -15,7 +18,7 @@ export function mlACajasUnidades(
   const ml = ml_por_unidad ? Number(ml_por_unidad) : 0;
 
   if (!upf && !ml) {
-    return { cajas: 0, unidades: Math.floor(cantidad), sobrante: 0 };
+    return { cajas: 0, unidades: cantidad, sobrante: 0 };
   }
   if (!ml) {
     const cajas = Math.floor(cantidad / upf);
@@ -53,7 +56,7 @@ export function tieneFormatoDual(insumo: InsumoStockFields | null | undefined): 
 }
 
 export function fmtNumCl(n: number): string {
-  return new Intl.NumberFormat("es-CL").format(Math.round(n));
+  return new Intl.NumberFormat("es-CL", { maximumFractionDigits: 2 }).format(n);
 }
 
 export interface StockColumnasData {
@@ -133,7 +136,7 @@ export function formatearStockDisplay(
   const unidad = insumo?.unidad || "unidades";
 
   if (!upf && !ml) {
-    return `${Math.floor(n)} ${unidad}`;
+    return `${fmtNumCl(n)} ${unidad}`;
   }
 
   if (!upf) {

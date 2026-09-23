@@ -28,6 +28,7 @@ export default function CantidadFormatoInput({
       disabled={disabled}
       compact={compact}
       onChange={(v) => {
+        if (v === null) return;
         const { cajas, unidades } = mlACajasUnidades(
           v,
           insumo?.unidades_por_formato ?? null,

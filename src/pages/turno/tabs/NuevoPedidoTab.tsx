@@ -1408,7 +1408,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
         </div>
 
         {/* RESUMEN + BOTONES — fijos al pie */}
-        <div className="border-t border-border p-4 space-y-3 bg-card">
+        <div className="border-t border-border p-3 sm:p-4 space-y-3 bg-card">
           {!esExterno && (
             <div className="rounded-lg border border-border bg-background p-3 space-y-3">
               <label className="flex items-center gap-2 cursor-pointer">
@@ -1420,7 +1420,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
               </label>
 
               {yaPago && (
-                <div className="space-y-2 pl-6 border-l-2 border-primary/30">
+                <div className="space-y-2 pl-3 sm:pl-6 border-l-2 border-primary/30">
                   <div className="space-y-1">
                     <Label className="text-xs flex items-center gap-1"><Banknote className="h-3 w-3" /> Efectivo</Label>
                     <Input
@@ -1435,7 +1435,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs flex items-center gap-1"><Landmark className="h-3 w-3" /> Transferencia</Label>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(8rem,40%)] gap-2">
                       <Input
                         type="number"
                         min="0"
@@ -1443,7 +1443,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                         value={pagoMixtoTr}
                         onChange={(e) => setPagoMixtoTr(e.target.value)}
                         placeholder="0"
-                        className="bg-background font-mono h-9 flex-1"
+                        className="bg-background font-mono h-9 min-w-0"
                       />
                       <Input
                         value={pagoMixtoTrRef}
@@ -1452,7 +1452,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                           setPagoMixtoTrRef(e.target.value);
                         }}
                         placeholder="Referencia"
-                        className="bg-background h-9 w-[40%]"
+                        className="bg-background h-9 min-w-0 w-full"
                         maxLength={50}
                         disabled={pagoYaTr <= 0}
                       />
@@ -1510,7 +1510,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                 ¿Cómo va a pagar?
                 <span className="text-muted-foreground font-normal normal-case tracking-normal">(opcional)</span>
               </Label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 min-[440px]:grid-cols-3 gap-2">
                 {([
                   { v: "efectivo" as const, label: "Efectivo", Icon: Banknote },
                   { v: "transferencia" as const, label: "Transferencia", Icon: Landmark },
@@ -1523,7 +1523,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                       type="button"
                       onClick={() => toggleMetodoPagoEsperado(v)}
                       className={cn(
-                        "flex flex-col items-center justify-center gap-1 h-12 rounded-lg border text-xs font-bold uppercase tracking-wider transition",
+                        "flex min-[440px]:flex-col items-center justify-center gap-1.5 min-[440px]:gap-1 h-11 min-[440px]:h-12 rounded-lg border text-xs font-bold uppercase tracking-wider transition",
                         active
                           ? "bg-primary text-primary-foreground border-primary"
                           : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
@@ -1547,7 +1547,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                         ? { label: "Transferencia", value: pagoEsperadoTr, setValue: setPagoEsperadoTr, Icon: Landmark }
                         : { label: "Tarjeta", value: pagoEsperadoTa, setValue: setPagoEsperadoTa, Icon: CreditCard };
                     return (
-                      <div key={metodo} className="grid grid-cols-[minmax(0,1fr)_9rem] items-center gap-2">
+                      <div key={metodo} className="grid grid-cols-1 min-[440px]:grid-cols-[minmax(0,1fr)_9rem] min-[440px]:items-center gap-1 min-[440px]:gap-2">
                         <Label htmlFor={`pago-esperado-${metodo}`} className="text-xs flex items-center gap-1.5">
                           <config.Icon className="h-3.5 w-3.5" /> {config.label}
                         </Label>
@@ -1577,9 +1577,9 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 min-[440px]:grid-cols-3 gap-2">
             <Button type="button" variant="outline" onClick={() => setAgendarOpen((v) => !v)}
-              className={`h-12 font-bold uppercase text-xs flex-col gap-0.5 ${horaAgendada ? "border-primary text-primary" : ""}`}>
+              className={`h-11 min-[440px]:h-12 font-bold uppercase text-xs min-[440px]:flex-col gap-1 min-[440px]:gap-0.5 ${horaAgendada ? "border-primary text-primary" : ""}`}>
               <CalendarClock className="h-4 w-4" /> Agendar
             </Button>
             <Button
@@ -1587,7 +1587,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
               variant="secondary"
               disabled={saving || lineas.length === 0 || (yaPago && !pagoYaCuadra) || (!yaPago && !!errorPagoEsperado)}
               onClick={submit}
-              className="h-12 font-bold uppercase text-xs flex-col gap-0.5"
+              className="h-11 min-[440px]:h-12 font-bold uppercase text-xs min-[440px]:flex-col gap-1 min-[440px]:gap-0.5"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4" /> Guardar</>}
             </Button>
@@ -1596,7 +1596,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
               disabled={saving || lineas.length === 0 || (yaPago && !pagoYaCuadra) || (!yaPago && !!errorPagoEsperado)}
               onClick={submit}
               className={cn(
-                "h-12 font-bold uppercase text-xs flex-col gap-0.5",
+                "h-11 min-[440px]:h-12 font-bold uppercase text-xs min-[440px]:flex-col gap-1 min-[440px]:gap-0.5",
                 yaPago && pagoYaCuadra && diffYaPago === 0
                   ? "bg-success text-success-foreground hover:bg-success/90"
                   : "bg-primary text-primary-foreground hover:bg-primary/90",

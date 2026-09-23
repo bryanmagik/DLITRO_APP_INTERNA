@@ -292,7 +292,7 @@ export default function PagarDespachadorCard({
         </div>
       </div>
       <CollapsibleContent className="data-[state=open]:animate-accordion-down data-[state=closed]:animate-accordion-up">
-        <div className="border-t border-border p-4 bg-background/40">
+        <div className="border-t border-border p-3 sm:p-4 bg-background/40">
       <div className="space-y-1 text-sm">
         <div className="flex justify-between">
           <span className="text-muted-foreground">Pedidos entregados</span>
@@ -320,7 +320,7 @@ export default function PagarDespachadorCard({
         <p className="text-xs text-muted-foreground">
           Reales: <span className="font-mono">{horasReales.toFixed(2)} h</span>
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 min-[440px]:grid-cols-2 sm:grid-cols-3 gap-2">
           {tarifas.map((t) => {
             const sel = tarifaSeleccionada?.id === t.id;
             return (
@@ -339,7 +339,7 @@ export default function PagarDespachadorCard({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 items-end">
+      <div className="mt-4 grid grid-cols-1 min-[440px]:grid-cols-2 gap-3 min-[440px]:items-end">
         <div>
           <Label className="label-upper">Base por horas</Label>
           <div className="font-mono text-lg text-foreground mt-1">{fmtCLP(base)}</div>
@@ -390,7 +390,7 @@ export default function PagarDespachadorCard({
               <span className="font-mono text-destructive">- {fmtCLP(descuentoPrestamo)}</span>
             </div>
             {!pagado && (
-              <div className="flex items-end gap-2 pt-2 border-t border-border">
+              <div className="grid grid-cols-1 min-[440px]:grid-cols-[minmax(0,1fr)_auto] min-[440px]:items-end gap-2 pt-2 border-t border-border">
                 <div className="flex-1">
                   <Input
                     type="number"
@@ -407,7 +407,7 @@ export default function PagarDespachadorCard({
                   disabled={prestamoSaving || !montoPrestamo}
                   size="sm"
                   variant="outline"
-                  className="uppercase text-xs tracking-wider"
+                  className="w-full min-[440px]:w-auto uppercase text-xs tracking-wider"
                 >
                   {prestamoSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Agregar"}
                 </Button>
@@ -421,7 +421,7 @@ export default function PagarDespachadorCard({
               <span className="font-bold uppercase text-xs tracking-wider text-success">✅ Devuelto</span>
             </div>
             {!pagado && (
-              <div className="flex items-end gap-2 pt-2 border-t border-border">
+              <div className="grid grid-cols-1 min-[440px]:grid-cols-[minmax(0,1fr)_auto] min-[440px]:items-end gap-2 pt-2 border-t border-border">
                 <div className="flex-1">
                   <Input
                     type="number"
@@ -437,7 +437,7 @@ export default function PagarDespachadorCard({
                   onClick={registrarPrestamo}
                   disabled={prestamoSaving || !montoPrestamo}
                   size="sm"
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 uppercase text-xs tracking-wider"
+                  className="w-full min-[440px]:w-auto bg-primary text-primary-foreground hover:bg-primary/90 uppercase text-xs tracking-wider"
                 >
                   {prestamoSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Registrar"}
                 </Button>
@@ -446,7 +446,7 @@ export default function PagarDespachadorCard({
           </div>
         ) : (
           !pagado && (
-            <div className="flex items-end gap-2">
+            <div className="grid grid-cols-1 min-[440px]:grid-cols-[minmax(0,1fr)_auto] min-[440px]:items-end gap-2">
               <div className="flex-1">
                 <Input
                   type="number"
@@ -462,7 +462,7 @@ export default function PagarDespachadorCard({
                 onClick={registrarPrestamo}
                 disabled={prestamoSaving || !montoPrestamo}
                 size="sm"
-                className="bg-primary text-primary-foreground hover:bg-primary/90 uppercase text-xs tracking-wider"
+                className="w-full min-[440px]:w-auto bg-primary text-primary-foreground hover:bg-primary/90 uppercase text-xs tracking-wider"
               >
                 {prestamoSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Registrar"}
               </Button>
@@ -471,7 +471,7 @@ export default function PagarDespachadorCard({
         )}
       </div>
 
-      <div className="border-t border-border mt-4 pt-3 flex items-center justify-between">
+      <div className="border-t border-border mt-4 pt-3 flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-xs text-muted-foreground uppercase tracking-wider">Total a pagar</span>
         <span className="font-mono text-2xl text-primary">{fmtCLP(totalAPagar)}</span>
       </div>

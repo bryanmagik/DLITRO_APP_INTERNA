@@ -1,6 +1,6 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { LogOut, Moon, Sun, Plus, ArrowRightLeft } from "lucide-react";
+import { LogOut, Moon, Sun, Plus, ArrowRightLeft, CircleStop } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { useAuthStore } from "@/stores/authStore";
@@ -56,16 +56,16 @@ export default function AppLayout() {
       >
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="app-header h-14 border-b border-border bg-card flex items-center px-4 gap-4 sticky top-0 z-30">
-            <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
-            <div className="flex-1 flex items-center gap-3 min-w-0">
+          <header className="app-header min-h-14 border-b border-border bg-card flex items-center px-2 py-2 gap-2 sm:px-4 sm:gap-3 sticky top-0 z-30">
+            <SidebarTrigger className="shrink-0 text-muted-foreground hover:text-foreground" />
+            <div className="flex-1 flex items-center gap-2 min-w-0 sm:gap-3">
               {sucursalNombre && (
-                <span className="font-display text-xl text-primary truncate">
+                <span className="font-display text-lg text-primary truncate sm:text-xl">
                   {sucursalNombre.toUpperCase()}
                 </span>
               )}
               {turnoInfo && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-widest">
+                <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-widest shrink-0">
                   <span className="hidden md:inline">·</span>
                   <span>Caja: <span className="text-foreground font-medium normal-case">${turnoInfo.cajaChica.toLocaleString("es-CL")}</span></span>
                   <button
@@ -79,25 +79,28 @@ export default function AppLayout() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-1 text-sm shrink-0 sm:gap-2 lg:gap-3">
               {turnoInfo && (
                 <>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-primary/40 text-primary hover:bg-primary/10 hover:text-primary uppercase tracking-wider h-8"
+                    className="border-primary/40 text-primary hover:bg-primary/10 hover:text-primary uppercase tracking-wider h-8 px-2 sm:px-3"
                     onClick={turnoInfo.onCambioTurno}
+                    title="Cambiar turno"
                   >
-                    <ArrowRightLeft className="h-3.5 w-3.5 mr-1" /> Cambio
+                    <ArrowRightLeft className="h-3.5 w-3.5 sm:mr-1" /> <span className="hidden sm:inline">Cambio</span>
                   </Button>
                   {turnoInfo.puedeCerrarTurno ? (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive uppercase tracking-wider h-8"
+                      className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive uppercase tracking-wider h-8 px-2 sm:px-3"
                       onClick={turnoInfo.onCerrarTurno}
+                      title="Cerrar turno"
                     >
-                      Cerrar
+                      <span className="hidden sm:inline">Cerrar</span>
+                      <CircleStop className="h-3.5 w-3.5 sm:hidden" />
                     </Button>
                   ) : (
                     <TooltipProvider>
@@ -108,9 +111,11 @@ export default function AppLayout() {
                               variant="outline"
                               size="sm"
                               disabled
-                              className="border-destructive/40 text-destructive/50 uppercase tracking-wider h-8"
+                              className="border-destructive/40 text-destructive/50 uppercase tracking-wider h-8 px-2 sm:px-3"
+                              aria-label="Cerrar turno"
                             >
-                              Cerrar
+                              <span className="hidden sm:inline">Cerrar</span>
+                              <CircleStop className="h-3.5 w-3.5 sm:hidden" />
                             </Button>
                           </span>
                         </TooltipTrigger>
@@ -127,13 +132,13 @@ export default function AppLayout() {
                   variant="ghost"
                   size="sm"
                   onClick={toggleTheme}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
                   aria-label="Cambiar tema"
                 >
                   {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                 </Button>
               )}
-              <div className="text-right hidden sm:block">
+              <div className="text-right hidden lg:block">
                 <div className="text-foreground font-medium leading-tight">
                   {perfil?.nombre_completo || perfil?.nombre}
                 </div>
@@ -145,13 +150,15 @@ export default function AppLayout() {
                 variant="ghost"
                 size="sm"
                 onClick={handleLogout}
-                className="text-muted-foreground hover:text-destructive"
+                className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                aria-label="Cerrar sesión"
+                title="Cerrar sesión"
               >
                 <LogOut className="h-4 w-4" />
               </Button>
             </div>
           </header>
-          <main className="flex-1 p-6 overflow-auto">
+          <main className="flex-1 min-w-0 overflow-auto p-3 sm:p-4 xl:p-6">
             <Outlet />
           </main>
         </div>

@@ -466,6 +466,7 @@ function NuevoPedidoModal({
                               insumo={i}
                               valorMl={baseSolicitado}
                               onChange={(v) => {
+                                if (v === null) return;
                                 const { cajas, unidades } = mlACajasUnidades(
                                   v,
                                   i.unidades_por_formato ?? null,

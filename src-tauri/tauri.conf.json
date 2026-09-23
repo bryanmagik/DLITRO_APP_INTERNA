@@ -1,22 +1,22 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "dlitro",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "identifier": "cl.dlitro.tomapedidos",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:8080",
     "beforeDevCommand": "npm run dev:staging",
-    "beforeBuildCommand": "npm run build:staging"
+    "beforeBuildCommand": "npm run build:production"
   },
   "app": {
     "windows": [
       {
         "title": "dlitro — Toma de Pedidos",
-        "width": 1280,
-        "height": 720,
-        "minWidth": 1280,
-        "minHeight": 720,
+        "width": 1200,
+        "height": 700,
+        "minWidth": 800,
+        "minHeight": 560,
         "resizable": true,
         "fullscreen": false,
         "maximized": true

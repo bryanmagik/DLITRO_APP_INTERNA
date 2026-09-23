@@ -488,7 +488,15 @@ export type Database = {
           id: string
           ml_por_unidad: number | null
           nombre: string
+          grupo_inventario: string | null
+          maximo_conteo: number | null
+          orden_presentacion: number
+          orden_visual: number | null
+          paso_conteo: number
+          presentacion_inventario: string | null
+          seccion_inventario: string
           tipo: string
+          tipo_conteo: string
           unidad: string | null
           unidad_logistica: string | null
           unidades_por_formato: number | null
@@ -500,7 +508,15 @@ export type Database = {
           id?: string
           ml_por_unidad?: number | null
           nombre: string
+          grupo_inventario?: string | null
+          maximo_conteo?: number | null
+          orden_presentacion?: number
+          orden_visual?: number | null
+          paso_conteo?: number
+          presentacion_inventario?: string | null
+          seccion_inventario?: string
           tipo: string
+          tipo_conteo?: string
           unidad?: string | null
           unidad_logistica?: string | null
           unidades_por_formato?: number | null
@@ -512,7 +528,15 @@ export type Database = {
           id?: string
           ml_por_unidad?: number | null
           nombre?: string
+          grupo_inventario?: string | null
+          maximo_conteo?: number | null
+          orden_presentacion?: number
+          orden_visual?: number | null
+          paso_conteo?: number
+          presentacion_inventario?: string | null
+          seccion_inventario?: string
           tipo?: string
+          tipo_conteo?: string
           unidad?: string | null
           unidad_logistica?: string | null
           unidades_por_formato?: number | null
@@ -569,24 +593,39 @@ export type Database = {
       }
       inventarios_parciales: {
         Row: {
+          conteo_jarros_at: string | null
           created_at: string
           id: string
+          jarros_cajas_con_sticker: number | null
+          jarros_cajas_sin_sticker: number | null
+          jarros_rotos: number | null
+          jarros_sueltos: number | null
           motivo: string
           sucursal_id: string
           turno_id: string
           usuario_id: string | null
         }
         Insert: {
+          conteo_jarros_at?: string | null
           created_at?: string
           id?: string
+          jarros_cajas_con_sticker?: number | null
+          jarros_cajas_sin_sticker?: number | null
+          jarros_rotos?: number | null
+          jarros_sueltos?: number | null
           motivo?: string
           sucursal_id: string
           turno_id: string
           usuario_id?: string | null
         }
         Update: {
+          conteo_jarros_at?: string | null
           created_at?: string
           id?: string
+          jarros_cajas_con_sticker?: number | null
+          jarros_cajas_sin_sticker?: number | null
+          jarros_rotos?: number | null
+          jarros_sueltos?: number | null
           motivo?: string
           sucursal_id?: string
           turno_id?: string
@@ -1856,9 +1895,74 @@ export type Database = {
           },
         ]
       }
+      turnos_cierres_admin_auditoria: {
+        Row: {
+          accion: string
+          created_at: string
+          efectivo_anterior: number | null
+          efectivo_nuevo: number
+          efectivo_sistema: number
+          id: string
+          motivo: string
+          sucursal_id: string
+          turno_id: string
+          usuario_id: string
+        }
+        Insert: {
+          accion: string
+          created_at?: string
+          efectivo_anterior?: number | null
+          efectivo_nuevo: number
+          efectivo_sistema: number
+          id?: string
+          motivo: string
+          sucursal_id: string
+          turno_id: string
+          usuario_id: string
+        }
+        Update: {
+          accion?: string
+          created_at?: string
+          efectivo_anterior?: number | null
+          efectivo_nuevo?: number
+          efectivo_sistema?: number
+          id?: string
+          motivo?: string
+          sucursal_id?: string
+          turno_id?: string
+          usuario_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "turnos_cierres_admin_auditoria_sucursal_id_fkey"
+            columns: ["sucursal_id"]
+            isOneToOne: false
+            referencedRelation: "sucursales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "turnos_cierres_admin_auditoria_turno_id_fkey"
+            columns: ["turno_id"]
+            isOneToOne: false
+            referencedRelation: "turnos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "turnos_cierres_admin_auditoria_usuario_id_fkey"
+            columns: ["usuario_id"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       turnos: {
         Row: {
           caja_chica_apertura: number
+          cerrado_remotamente_por: string | null
+          cierre_remoto: boolean
+          cierre_remoto_actualizado_at: string | null
+          cierre_remoto_motivo: string | null
           closed_at: string | null
           comentario_contador: string | null
           comentario_contador_fecha: string | null
@@ -1880,6 +1984,10 @@ export type Database = {
         }
         Insert: {
           caja_chica_apertura?: number
+          cerrado_remotamente_por?: string | null
+          cierre_remoto?: boolean
+          cierre_remoto_actualizado_at?: string | null
+          cierre_remoto_motivo?: string | null
           closed_at?: string | null
           comentario_contador?: string | null
           comentario_contador_fecha?: string | null
@@ -1901,6 +2009,10 @@ export type Database = {
         }
         Update: {
           caja_chica_apertura?: number
+          cerrado_remotamente_por?: string | null
+          cierre_remoto?: boolean
+          cierre_remoto_actualizado_at?: string | null
+          cierre_remoto_motivo?: string | null
           closed_at?: string | null
           comentario_contador?: string | null
           comentario_contador_fecha?: string | null
@@ -1921,6 +2033,13 @@ export type Database = {
           tomador_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "turnos_cerrado_remotamente_por_fkey"
+            columns: ["cerrado_remotamente_por"]
+            isOneToOne: false
+            referencedRelation: "usuarios"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "turnos_comentario_contador_usuario_id_fkey"
             columns: ["comentario_contador_usuario_id"]
@@ -2051,6 +2170,23 @@ export type Database = {
         Returns: number
       }
       calcular_costo_trago: { Args: { p_producto_id: string }; Returns: number }
+      cerrar_turno_remotamente_admin: {
+        Args: {
+          p_efectivo_declarado: number
+          p_motivo: string
+          p_turno_id: string
+        }
+        Returns: Database["public"]["Tables"]["turnos"]["Row"]
+      }
+      corregir_efectivo_cierre_remoto_admin: {
+        Args: {
+          p_efectivo_anterior: number
+          p_efectivo_declarado: number
+          p_motivo: string
+          p_turno_id: string
+        }
+        Returns: Database["public"]["Tables"]["turnos"]["Row"]
+      }
       corregir_pedido_entregado: {
         Args: {
           p_metodo_pago: Database["public"]["Enums"]["metodo_pago"]

@@ -896,7 +896,7 @@ function PedidoEditModal({
                       <Label className="text-xs flex items-center gap-1">
                         <Landmark className="h-3 w-3" /> Transferencia
                       </Label>
-                      <div className="flex gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(8rem,40%)] gap-2">
                         <Input
                           type="number"
                           min="0"
@@ -912,7 +912,7 @@ function PedidoEditModal({
                             }
                           }}
                           placeholder="0"
-                          className="bg-card font-mono h-9 flex-1"
+                          className="bg-card font-mono h-9 min-w-0"
                         />
                         <Input
                           value={pagoTransferRef}
@@ -921,7 +921,7 @@ function PedidoEditModal({
                             setPagoTransferRef(e.target.value);
                           }}
                           placeholder="Referencia"
-                          className="bg-card h-9 w-[40%] font-mono"
+                          className="bg-card h-9 min-w-0 w-full font-mono"
                           maxLength={50}
                           disabled={pagoTr <= 0}
                         />

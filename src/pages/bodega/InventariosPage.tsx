@@ -3,6 +3,7 @@ import { Loader2, CheckCircle2, AlertTriangle, AlertCircle, ChevronDown } from "
 import { supabase } from "@/integrations/supabase/client";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { formatearCantidad, formatearMl, formatearPackIndividual } from "@/lib/formatoCantidad";
+import { INVENTARIO_SELECT, compararInventario, type ConfigInventarioFields } from "@/lib/inventarioOperativo";
 
 interface InvCierre {
   id: string;
@@ -16,7 +17,7 @@ interface InvCierre {
 }
 interface Turno { id: string; sucursal_id: string; closed_at: string | null; created_at: string | null }
 interface Sucursal { id: string; nombre: string }
-interface Insumo {
+interface Insumo extends ConfigInventarioFields {
   id: string;
   nombre: string;
   unidad: string | null;
@@ -44,7 +45,7 @@ export default function InventariosPage() {
         supabase.from("inventario_cierre").select("*").order("created_at", { ascending: false }).limit(2000),
         supabase.from("turnos").select("id,sucursal_id,closed_at,created_at").order("created_at", { ascending: false }).limit(200),
         supabase.from("sucursales").select("id,nombre"),
-        supabase.from("insumos").select("id,nombre,unidad,formato_mayor,unidades_por_formato,ml_por_unidad"),
+        supabase.from("insumos").select(INVENTARIO_SELECT),
       ]);
       setRows((ic.data as InvCierre[]) ?? []);
       setTurnos((tu.data as Turno[]) ?? []);
@@ -75,8 +76,13 @@ export default function InventariosPage() {
         <div className="space-y-3">
           {turnosConInv.map((t) => {
             const suc = sucursales.find((s) => s.id === t.sucursal_id);
-            const filas = rows.filter((r) => r.turno_id === t.id);
-            const conDif = filas.filter((r) => Math.abs((r.cantidad_real ?? 0) - r.cantidad_ideal) > 0.001).length;
+            const filas = rows.filter((r) => r.turno_id === t.id).sort((a, b) => {
+              const ia = insumos.find((i) => i.id === a.insumo_id);
+              const ib = insumos.find((i) => i.id === b.insumo_id);
+              return ia && ib ? compararInventario(ia, ib) : 0;
+            });
+            const sinContar = filas.filter((r) => r.cantidad_real == null).length;
+            const conDif = filas.filter((r) => r.cantidad_real != null && Math.abs(r.cantidad_real - r.cantidad_ideal) > 0.001).length;
             const isOpen = openTurno === t.id;
             return (
               <Collapsible key={t.id} open={isOpen} onOpenChange={() => setOpenTurno((cur) => (cur === t.id ? null : t.id))}>
@@ -86,11 +92,11 @@ export default function InventariosPage() {
                       <div>
                         <h3 className="font-display text-xl">{suc?.nombre ?? "—"}</h3>
                         <p className="text-xs text-muted-foreground uppercase tracking-wider mt-1">
-                          {fmtFecha(t.closed_at ?? t.created_at)} · {filas.length} insumos · {conDif > 0 ? `${conDif} con diferencia` : "todo cuadra"}
+                          {fmtFecha(t.closed_at ?? t.created_at)} · {filas.length} insumos · {sinContar > 0 ? `${sinContar} sin contar` : conDif > 0 ? `${conDif} con diferencia` : "todo cuadra"}
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
-                        {conDif === 0 ? (
+                        {conDif === 0 && sinContar === 0 ? (
                           <CheckCircle2 className="h-5 w-5 text-success" />
                         ) : (
                           <AlertTriangle className="h-5 w-5 text-warning" />
@@ -119,16 +125,18 @@ export default function InventariosPage() {
                           {filas.map((r) => {
                             const ins = insumos.find((i) => i.id === r.insumo_id);
                             const u = ins?.unidad ?? "";
+                            const contado = r.cantidad_real != null;
                             const real = Number(r.cantidad_real ?? 0);
                             const sis = Number(r.cantidad_ideal);
                             const dif = real - sis;
                             const tol = Math.max(1, sis * 0.02);
-                            const status =
+                            const status = !contado ? "pending" :
                               Math.abs(dif) < 0.001 ? "ok" : Math.abs(dif) <= tol ? "warn" : "bad";
                             const statusCfg = {
                               ok: { cls: "text-success", icon: CheckCircle2, label: "OK" },
                               warn: { cls: "text-warning", icon: AlertTriangle, label: "Atento" },
                               bad: { cls: "text-destructive", icon: AlertCircle, label: "Crítico" },
+                              pending: { cls: "text-muted-foreground", icon: AlertCircle, label: "Sin contar" },
                             }[status];
                             const Icon = statusCfg.icon;
                             const mlReal = ins ? formatearMl(real, ins) : null;
@@ -137,12 +145,12 @@ export default function InventariosPage() {
                             return (
                               <tr key={r.id} className="border-b border-border last:border-0">
                                 <td className="px-4 py-3 text-foreground font-medium">{ins?.nombre ?? "—"}</td>
-                                <td className="px-4 py-3 text-muted-foreground">{r.conteo_original ?? "—"}</td>
+                                <td className="px-4 py-3 text-muted-foreground">{contado ? (r.conteo_original ?? "0") : "Sin contar"}</td>
                                 <td className="px-4 py-3 text-right font-mono text-foreground">
-                                  {ins ? formatearPackIndividual(real, ins) : `${fmtNum(real)} Individual`}
+                                  {contado ? (ins ? formatearPackIndividual(real, ins) : `${fmtNum(real)} Individual`) : "—"}
                                 </td>
                                 <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
-                                  {mlReal ?? `${fmtNum(real)} ${u}`}
+                                  {contado ? (mlReal ?? `${fmtNum(real)} ${u}`) : "—"}
                                 </td>
                                 <td className="px-4 py-3 text-right font-mono text-muted-foreground">
                                   {ins ? formatearPackIndividual(sis, ins) : `${fmtNum(sis)} Individual`}
@@ -151,10 +159,10 @@ export default function InventariosPage() {
                                   {mlSis ?? `${fmtNum(sis)} ${u}`}
                                 </td>
                                 <td className={`px-4 py-3 text-right font-mono ${dif > 0 ? "text-success" : dif < 0 ? "text-destructive" : "text-muted-foreground"}`}>
-                                  {dif === 0 ? "—" : `${dif > 0 ? "+" : "-"}${ins ? formatearPackIndividual(Math.abs(dif), ins) : `${fmtNum(Math.abs(dif))} Individual`}`}
+                                  {!contado || dif === 0 ? "—" : `${dif > 0 ? "+" : "-"}${ins ? formatearPackIndividual(Math.abs(dif), ins) : `${fmtNum(Math.abs(dif))} Individual`}`}
                                 </td>
                                 <td className={`px-4 py-3 text-right font-mono text-xs ${dif > 0 ? "text-success" : dif < 0 ? "text-destructive" : "text-muted-foreground"}`}>
-                                  {Math.abs(dif) < 0.001 ? "—" : `${dif < 0 ? "-" : "+"}${mlDif ?? `${fmtNum(Math.abs(dif))} ${u}`}`}
+                                  {!contado || Math.abs(dif) < 0.001 ? "—" : `${dif < 0 ? "-" : "+"}${mlDif ?? `${fmtNum(Math.abs(dif))} ${u}`}`}
                                 </td>
                                 <td className="px-4 py-3 text-center">
                                   <span className={`inline-flex items-center gap-1 text-xs uppercase tracking-wider ${statusCfg.cls}`}>

@@ -48,6 +48,7 @@ import { Navigate } from "react-router-dom";
 import ContadorPage from "./pages/contador/ContadorPage";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
 import AuditoriaDespachosPage from "./pages/admin/AuditoriaDespachosPage";
+import TurnosAdminPage from "./pages/admin/TurnosAdminPage";
 import VersionBadge from "./components/VersionBadge";
 
 const queryClient = new QueryClient();
@@ -82,6 +83,7 @@ const App = () => (
               <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
               <Route path="/admin/auditoria-despachos" element={<AuditoriaDespachosPage />} />
               <Route path="/admin/auditoria" element={<AuditoriaDespachosPage />} />
+              <Route path="/admin/turnos" element={<TurnosAdminPage />} />
               <Route path="/admin/sucursales" element={<SucursalesPage />} />
               <Route path="/admin/pedidos" element={<PedidosAdminPage />} />
               <Route path="/admin/productos" element={<ProductosPage />} />

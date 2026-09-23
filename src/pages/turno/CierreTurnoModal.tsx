@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import InputCajasUnidades from "@/components/InputCajasUnidades";
+import InventarioInsumosTable from "@/components/InventarioInsumosTable";
 import { formatearStockDisplay } from "@/utils/stockUtils";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -15,9 +15,10 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { toast } from "sonner";
 import type { Turno } from "./TurnoPage";
 import PagarDespachadorCard from "@/components/PagarDespachadorCard";
-import { TIPOS_INSUMO } from "@/lib/logistica";
 import { useAuthStore } from "@/stores/authStore";
 import { puedeCerrarTurno } from "@/lib/turnoPermisos";
+import { minimosDe } from "@/lib/logistica";
+import { INVENTARIO_SELECT, ordenarInventario, type ConfigInventarioFields } from "@/lib/inventarioOperativo";
 
 const TOLERANCIA = 500;
 
@@ -64,9 +65,15 @@ interface DespRow {
   pagado: boolean;
 }
 
-interface Insumo { id: string; nombre: string; unidad: string | null; tipo: string }
-interface StockRow { insumo_id: string; cantidad: number; stock_minimo: number | null }
-interface InvRow {
+interface Insumo extends ConfigInventarioFields { id: string; nombre: string; unidad: string | null; tipo: string }
+interface StockRow {
+  insumo_id: string;
+  cantidad: number;
+  stock_minimo: number | null;
+  stock_minimo_observacion: number | null;
+  stock_minimo_critico: number | null;
+}
+interface InvRow extends ConfigInventarioFields {
   insumo_id: string;
   nombre: string;
   unidad: string;
@@ -186,8 +193,8 @@ export default function CierreTurnoModal({
       const [tdRes, peRes, insRes, stRes, pgRes, gaRes, pdRes, suRes, prRes, manRes, icRes] = await Promise.all([
         supabase.from("turno_despachadores").select("*").eq("turno_id", turno.id),
         supabase.from("pedidos").select("despachador_id,estado,costo_despacho").eq("turno_id", turno.id),
-        supabase.from("insumos").select("id,nombre,unidad,tipo,formato_mayor,unidades_por_formato,ml_por_unidad").eq("activo", true).order("nombre"),
-        supabase.from("stock_sucursal").select("insumo_id,cantidad,stock_minimo").eq("sucursal_id", turno.sucursal_id),
+        supabase.from("insumos").select(INVENTARIO_SELECT).eq("activo", true),
+        supabase.from("stock_sucursal").select("insumo_id,cantidad,stock_minimo,stock_minimo_observacion,stock_minimo_critico").eq("sucursal_id", turno.sucursal_id),
         supabase.from("pagos_turno").select("id,monto,metodo,referencia,pedido_id").eq("turno_id", turno.id),
         supabase.from("gastos_turno").select("monto,metodo,concepto").eq("turno_id", turno.id),
         supabase.from("pago_despachadores")
@@ -231,7 +238,7 @@ export default function CierreTurnoModal({
         };
       }));
 
-      const insumos = (insRes.data as (Insumo & { formato_mayor: string | null; unidades_por_formato: number | null; ml_por_unidad: number | null })[]) ?? [];
+      const insumos = ordenarInventario((insRes.data as unknown as (Insumo & { formato_mayor: string | null; unidades_por_formato: number | null; ml_por_unidad: number | null })[]) ?? []);
       const stock = (stRes.data as StockRow[]) ?? [];
       const guardados = (icRes.data as { insumo_id: string; cantidad_real: number | null }[]) ?? [];
       const guardadosByInsumo = new Map(guardados.map((g) => [g.insumo_id, g]));
@@ -246,10 +253,21 @@ export default function CierreTurnoModal({
           unidad: i.unidad ?? "",
           tipo: i.tipo,
           sistema: Number(s?.cantidad ?? 0),
-          minimo: Number(s?.stock_minimo ?? 0),
+          minimo: (() => {
+            const { obs, crit } = minimosDe(s);
+            return crit || obs;
+          })(),
           formato_mayor: i.formato_mayor ?? null,
           unidades_por_formato: i.unidades_por_formato != null ? Number(i.unidades_por_formato) : null,
           ml_por_unidad: i.ml_por_unidad != null ? Number(i.ml_por_unidad) : null,
+          seccion_inventario: i.seccion_inventario,
+          grupo_inventario: i.grupo_inventario,
+          presentacion_inventario: i.presentacion_inventario,
+          orden_visual: i.orden_visual,
+          orden_presentacion: i.orden_presentacion,
+          tipo_conteo: i.tipo_conteo,
+          paso_conteo: i.paso_conteo != null ? Number(i.paso_conteo) : null,
+          maximo_conteo: i.maximo_conteo != null ? Number(i.maximo_conteo) : null,
           cantidadReal: contado ? Number(cantidadGuardada) : 0,
           contado,
         };
@@ -513,7 +531,7 @@ export default function CierreTurnoModal({
       <DialogContent className="max-w-none w-screen h-screen sm:rounded-none p-0 bg-background border-0 flex flex-col gap-0">
         {validandoPedidos ? (
           <>
-            <DialogHeader className="px-6 py-4 border-b border-border flex-row items-center justify-between space-y-0 gap-4">
+            <DialogHeader className="px-3 sm:px-6 py-3 sm:py-4 border-b border-border flex-row items-center justify-between space-y-0 gap-3 sm:gap-4">
               <DialogTitle className="font-display text-2xl uppercase tracking-wider truncate">
                 Cierre de turno
               </DialogTitle>
@@ -525,13 +543,13 @@ export default function CierreTurnoModal({
           </>
         ) : bloqueadoPorPedidos ? (
           <>
-            <DialogHeader className="px-6 py-4 border-b border-border flex-row items-center justify-between space-y-0 gap-4">
+            <DialogHeader className="px-3 sm:px-6 py-3 sm:py-4 border-b border-border flex-row items-center justify-between space-y-0 gap-3 sm:gap-4">
               <DialogTitle className="font-display text-2xl uppercase tracking-wider truncate text-destructive">
                 No puedes cerrar el turno
               </DialogTitle>
               <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}><X className="h-5 w-5" /></Button>
             </DialogHeader>
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-6">
               <div className="max-w-xl mx-auto space-y-6">
                 <div className="flex items-start gap-4 rounded-xl border border-warning/40 bg-warning/10 p-5">
                   <AlertTriangle className="h-8 w-8 text-warning shrink-0 mt-0.5" />
@@ -560,7 +578,7 @@ export default function CierreTurnoModal({
                 </div>
               </div>
             </div>
-            <div className="border-t border-border px-6 py-4 flex items-center justify-end gap-3 bg-card">
+            <div className="border-t border-border px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-end gap-2 sm:gap-3 bg-card">
               <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
               <Button
                 onClick={irAMisPedidos}
@@ -572,9 +590,9 @@ export default function CierreTurnoModal({
           </>
         ) : (
           <>
-        <DialogHeader className="px-6 py-4 border-b border-border flex-row items-center justify-between space-y-0 gap-4">
+        <DialogHeader className="px-3 sm:px-6 py-3 sm:py-4 border-b border-border flex-row items-center justify-between space-y-0 gap-3 sm:gap-4">
           <div className="min-w-0">
-            <DialogTitle className="font-display text-2xl uppercase tracking-wider truncate">
+            <DialogTitle className="font-display text-lg sm:text-2xl uppercase tracking-wider truncate">
               Cierre de turno{sucursalNombre && ` — ${sucursalNombre}`} — {fechaHoy}
             </DialogTitle>
             <div className="flex items-center gap-3 mt-1">
@@ -591,7 +609,7 @@ export default function CierreTurnoModal({
           <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}><X className="h-5 w-5" /></Button>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6">
           {loading ? (
             <div className="h-full flex items-center justify-center text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando…
@@ -690,9 +708,9 @@ export default function CierreTurnoModal({
           )}
         </div>
 
-        <div className="border-t border-border px-6 py-4 flex items-center justify-between bg-card gap-4">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <div className="flex items-center gap-3">
+        <div className="border-t border-border px-3 sm:px-6 py-3 sm:py-4 grid grid-cols-2 items-center bg-card gap-2 sm:gap-4">
+          <Button variant="ghost" className="justify-self-start" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <div className="flex min-w-0 items-center justify-end gap-3">
             {!todoCompleto && (
               <span className="text-xs uppercase tracking-widest text-muted-foreground hidden sm:inline">
                 Completá las 3 secciones para cerrar el turno
@@ -702,7 +720,7 @@ export default function CierreTurnoModal({
               onClick={solicitarCierre}
               disabled={saving || !todoCompleto}
               size="lg"
-              className={`uppercase tracking-wider font-bold px-8 ${cuadra ? "bg-success text-success-foreground hover:bg-success/90" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}`}
+              className={`max-w-full px-3 sm:px-8 uppercase tracking-wider font-bold ${cuadra ? "bg-success text-success-foreground hover:bg-success/90" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}`}
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : cuadra ? "Cerrar turno" : "Cerrar con descuadre"}
             </Button>
@@ -829,9 +847,6 @@ function Step2({
   if (inv.length === 0) {
     return <div className="p-12 bg-card border border-border rounded-xl text-center text-muted-foreground">No hay insumos de preparación con stock asignado</div>;
   }
-  const grupos = TIPOS_INSUMO
-    .map((t) => ({ tipo: t, items: inv.filter((r) => r.tipo === t) }))
-    .filter((g) => g.items.length > 0);
   return (
     <div className="space-y-4">
     {inventarioGuardado && (
@@ -887,44 +902,12 @@ function Step2({
         )}
       </div>
     )}
-    {grupos.map((g) => (
-    <div key={g.tipo} className="space-y-2">
-      <div className="flex items-center gap-3">
-        <div className="h-px flex-1 bg-border" />
-        <h3 className="font-display text-sm uppercase tracking-widest text-muted-foreground px-2">{g.tipo}</h3>
-        <div className="h-px flex-1 bg-border" />
-      </div>
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
-      <table className="w-full text-sm">
-        <thead className="bg-secondary/40 border-b border-border">
-          <tr className="text-left text-muted-foreground uppercase text-xs tracking-wider">
-            <th className="px-4 py-3">Insumo</th>
-            <th className="px-4 py-3 text-right">Conteo</th>
-          </tr>
-        </thead>
-        <tbody>
-          {g.items.map((r) => (
-              <tr key={r.insumo_id} className="border-b border-border last:border-0">
-                <td className="px-4 py-3 text-foreground font-medium">
-                  <div>{r.nombre}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">
-                    Sistema: {formatearStockDisplay(r.sistema, r) ?? "Sin stock"}
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <InputCajasUnidades
-                    insumo={r}
-                    valorMl={r.contado ? r.cantidadReal : null}
-                    onChange={(v) => updateInv(r.insumo_id, { cantidadReal: v, contado: true })}
-                  />
-                </td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
-      </div>
-    </div>
-    ))}
+    <InventarioInsumosTable
+      inv={inv}
+      updateInv={updateInv}
+      disabled={inventarioGuardado}
+      mostrarSistema
+    />
     </div>
   );
 }
@@ -974,7 +957,7 @@ function Step3(props: {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-5xl mx-auto">
-      <div className="bg-card border border-border rounded-xl p-5 space-y-1">
+      <div className="bg-card border border-border rounded-xl p-3 sm:p-5 space-y-1">
         <h3 className="font-display text-xl uppercase tracking-wider text-center pb-3 border-b border-border">
           Cuadre de caja
         </h3>
@@ -1072,7 +1055,7 @@ function Step3(props: {
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+      <div className="bg-card border border-border rounded-xl p-3 sm:p-5 space-y-4">
         <h3 className="font-display text-xl uppercase tracking-wider text-center pb-2 border-b border-border">
           Declaración de efectivo
         </h3>

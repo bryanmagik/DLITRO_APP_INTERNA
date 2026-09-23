@@ -21,6 +21,14 @@ export interface InsumoFull {
   formato_mayor?: string | null;
   unidades_por_formato?: number | null;
   ml_por_unidad?: number | null;
+  seccion_inventario?: string | null;
+  grupo_inventario?: string | null;
+  presentacion_inventario?: string | null;
+  orden_visual?: number | null;
+  orden_presentacion?: number | null;
+  tipo_conteo?: string | null;
+  paso_conteo?: number | null;
+  maximo_conteo?: number | null;
 }
 
 export interface StockSucRow {

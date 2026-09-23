@@ -31,6 +31,7 @@ import {
   GitCompareArrows,
   Wallet,
   History,
+  Clock3,
 } from "lucide-react";
 import {
   Sidebar,
@@ -53,6 +54,7 @@ type Item = { title: string; url: string; icon: typeof LayoutDashboard };
 const menuPorRol: Record<Rol, Item[]> = {
   superadmin: [
     { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
+    { title: "Cierre de Turnos", url: "/admin/turnos", icon: Clock3 },
     { title: "Panel de Auditoría", url: "/admin/auditoria", icon: History },
     { title: "Sucursales", url: "/admin/sucursales", icon: Store },
     { title: "Pedidos", url: "/admin/pedidos", icon: ClipboardList },
@@ -69,6 +71,7 @@ const menuPorRol: Record<Rol, Item[]> = {
   ],
   admin: [
     { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
+    { title: "Cierre de Turnos", url: "/admin/turnos", icon: Clock3 },
     { title: "Panel de Auditoría", url: "/admin/auditoria", icon: History },
     { title: "Sucursales", url: "/admin/sucursales", icon: Store },
     { title: "Pedidos", url: "/admin/pedidos", icon: ClipboardList },
@@ -131,7 +134,7 @@ const menuPorRol: Record<Rol, Item[]> = {
 };
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const { perfil } = useAuthStore();
   const { pathname } = useLocation();
@@ -171,6 +174,9 @@ export function AppSidebar() {
                     <SidebarMenuButton asChild isActive={active}>
                       <NavLink
                         to={item.url}
+                        onClick={() => {
+                          if (isMobile) setOpenMobile(false);
+                        }}
                         className={`flex items-center gap-3 ${
                           active
                             ? "bg-sidebar-accent text-primary font-semibold"

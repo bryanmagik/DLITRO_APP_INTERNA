@@ -12,6 +12,7 @@ import {
   esInventarioDesactualizado,
   fmtUltimoCierre,
 } from "@/lib/inventarioCierre";
+import { INVENTARIO_SELECT, compararInventario } from "@/lib/inventarioOperativo";
 
 interface Sucursal { id: string; nombre: string }
 interface StockRow {
@@ -35,7 +36,9 @@ export default function StockSucursalesPage() {
     (async () => {
       setLoading(true);
       const [insR, sucR, stR, ciR] = await Promise.all([
-        supabase.from("insumos").select("id,nombre,unidad,tipo,formato_mayor,unidades_por_formato,ml_por_unidad").eq("activo", true).order("nombre"),
+        supabase.from("insumos").select(INVENTARIO_SELECT).eq("activo", true)
+          .order("orden_visual", { ascending: true, nullsFirst: false })
+          .order("orden_presentacion", { ascending: true }).order("nombre"),
         supabase.from("sucursales").select("id,nombre").eq("activo", true).order("nombre"),
         supabase
           .from("stock_sucursal")
@@ -77,7 +80,7 @@ export default function StockSucursalesPage() {
         out.get(r.sucursal_id)?.push({ insumo: ins, cantidad: r.cantidad, minimo: crit || obs });
       }
     });
-    out.forEach((arr) => arr.sort((a, b) => a.insumo.nombre.localeCompare(b.insumo.nombre)));
+    out.forEach((arr) => arr.sort((a, b) => compararInventario(a.insumo, b.insumo)));
     return out;
   }, [stock, sucursales, insumoMap]);
 
@@ -228,7 +231,7 @@ function InventarioCompleto({
           if (!rows?.length) return null;
           return (
             <div key={tipo}>
-              <h3 className="text-xs uppercase font-semibold tracking-wider text-muted-foreground mb-2">{tipo}</h3>
+              <h3 className="text-xs uppercase font-semibold tracking-wider text-muted-foreground mb-2">{tipo === "Aseo" ? "Útiles de aseo" : tipo}</h3>
               <div className="border rounded-lg overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-muted">

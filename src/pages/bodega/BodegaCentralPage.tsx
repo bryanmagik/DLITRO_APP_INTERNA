@@ -14,6 +14,7 @@ import {
   esInventarioDesactualizado,
   fmtUltimoCierre,
 } from "@/lib/inventarioCierre";
+import { INVENTARIO_SELECT } from "@/lib/inventarioOperativo";
 
 interface BodegaRow { insumo_id: string; cantidad: number; stock_minimo: number | null }
 interface Sucursal { id: string; nombre: string }
@@ -31,7 +32,9 @@ export default function BodegaCentralPage() {
   const cargar = async () => {
     setLoading(true);
     const [insR, stR, sucR, ciR] = await Promise.all([
-      supabase.from("insumos").select("id,nombre,unidad,tipo,formato_mayor,unidades_por_formato,ml_por_unidad").eq("activo", true).order("nombre"),
+      supabase.from("insumos").select(INVENTARIO_SELECT).eq("activo", true)
+        .order("orden_visual", { ascending: true, nullsFirst: false })
+        .order("orden_presentacion", { ascending: true }).order("nombre"),
       supabase.from("stock_bodega_central").select("insumo_id,cantidad,stock_minimo"),
       supabase.from("sucursales").select("id,nombre").eq("activo", true).order("nombre"),
       supabase
@@ -143,7 +146,7 @@ export default function BodegaCentralPage() {
               return (
                 <>
                   <tr key={`h-${tipo}`} className="bg-muted/30">
-                    <td colSpan={6} className="px-4 py-2 text-xs uppercase tracking-widest font-bold text-muted-foreground">{tipo}</td>
+                    <td colSpan={6} className="px-4 py-2 text-xs uppercase tracking-widest font-bold text-muted-foreground">{tipo === "Aseo" ? "Útiles de aseo" : tipo}</td>
                   </tr>
                   {items.map((i) => {
                     const s = stockMap.get(i.id);
@@ -160,7 +163,7 @@ export default function BodegaCentralPage() {
                               <InputCajasUnidades
                                 insumo={i}
                                 valorMl={editValMl}
-                                onChange={setEditValMl}
+                                onChange={(value) => { if (value !== null) setEditValMl(value); }}
                                 compact
                               />
                               <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => guardarCantidad(i.id)}><Save className="h-3 w-3" /></Button>
@@ -252,7 +255,7 @@ function EntradaStockModal({
             >
               <option value="">Seleccionar…</option>
               {TIPOS_INSUMO.map((tipo) => (
-                <optgroup key={tipo} label={tipo}>
+                <optgroup key={tipo} label={tipo === "Aseo" ? "Útiles de aseo" : tipo}>
                   {insumos.filter((i) => i.tipo === tipo).map((i) => (
                     <option key={i.id} value={i.id}>{i.nombre} ({i.unidad ?? "—"})</option>
                   ))}
@@ -266,7 +269,7 @@ function EntradaStockModal({
               <InputCajasUnidades
                 insumo={insumo}
                 valorMl={cantMl}
-                onChange={setCantMl}
+                onChange={(value) => { if (value !== null) setCantMl(value); }}
               />
             </div>
           </div>

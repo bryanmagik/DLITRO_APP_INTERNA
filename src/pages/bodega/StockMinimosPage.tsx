@@ -22,6 +22,7 @@ import { toast } from "@/components/ui/use-toast";
 import { TIPOS_INSUMO, InsumoFull, estadoStock } from "@/lib/logistica";
 import StockColumnasCells from "@/components/StockColumnasCells";
 import { cn } from "@/lib/utils";
+import { INVENTARIO_SELECT } from "@/lib/inventarioOperativo";
 
 interface Sucursal { id: string; nombre: string }
 interface StockRow {
@@ -51,8 +52,10 @@ export default function StockMinimosPage() {
     const [insR, sucR, stR] = await Promise.all([
       supabase
         .from("insumos")
-        .select("id,nombre,unidad,tipo,formato_mayor,unidades_por_formato,ml_por_unidad")
+        .select(INVENTARIO_SELECT)
         .eq("activo", true)
+        .order("orden_visual", { ascending: true, nullsFirst: false })
+        .order("orden_presentacion", { ascending: true })
         .order("nombre"),
       supabase.from("sucursales").select("id,nombre").eq("activo", true).order("nombre"),
       supabase
@@ -248,7 +251,7 @@ export default function StockMinimosPage() {
           return (
             <div key={tipo} className="border border-border rounded-lg overflow-hidden">
               <div className="px-4 py-2 bg-muted/40 text-xs uppercase tracking-widest font-bold text-muted-foreground">
-                {tipo}
+                {tipo === "Aseo" ? "Útiles de aseo" : tipo}
               </div>
               <table className="w-full text-sm">
                 <thead className="bg-muted/20 border-b border-border">

@@ -6,10 +6,14 @@ import { Button } from "@/components/ui/button";
 import RealizarInventarioModal from "@/components/RealizarInventarioModal";
 import StockColumnasCells from "@/components/StockColumnasCells";
 import { TIPOS_INSUMO } from "@/lib/logistica";
+import { INVENTARIO_SELECT } from "@/lib/inventarioOperativo";
 
 interface Insumo {
   id: string; nombre: string; unidad: string | null; tipo: string;
   formato_mayor: string | null; unidades_por_formato: number | null; ml_por_unidad: number | null;
+  seccion_inventario?: string | null; grupo_inventario?: string | null; presentacion_inventario?: string | null;
+  orden_visual?: number | null; orden_presentacion?: number | null;
+  tipo_conteo?: string | null; paso_conteo?: number | null; maximo_conteo?: number | null;
 }
 interface Stock {
   insumo_id: string;
@@ -30,8 +34,11 @@ export default function BodegaTab({ turno }: { turno: Turno }) {
     const cargar = async () => {
       const { data: insumos } = await supabase
         .from("insumos")
-        .select("id,nombre,unidad,tipo,formato_mayor,unidades_por_formato,ml_por_unidad")
-        .eq("activo", true).order("nombre");
+        .select(INVENTARIO_SELECT)
+        .eq("activo", true)
+        .order("orden_visual", { ascending: true, nullsFirst: false })
+        .order("orden_presentacion", { ascending: true })
+        .order("nombre");
       const { data: stock } = await supabase
         .from("stock_sucursal")
         .select("insumo_id,cantidad,stock_minimo,stock_minimo_observacion,stock_minimo_critico")
@@ -90,7 +97,7 @@ export default function BodegaTab({ turno }: { turno: Turno }) {
             <div key={tipo} className="space-y-2">
               <div className="flex items-center gap-3">
                 <div className="h-px flex-1 bg-border" />
-                <h3 className="font-display text-sm uppercase tracking-widest text-muted-foreground px-2">{tipo}</h3>
+                <h3 className="font-display text-sm uppercase tracking-widest text-muted-foreground px-2">{tipo === "Aseo" ? "Útiles de aseo" : tipo}</h3>
                 <div className="h-px flex-1 bg-border" />
               </div>
               <div className="bg-card border border-border rounded-xl overflow-hidden">

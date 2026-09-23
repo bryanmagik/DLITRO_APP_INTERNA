@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { TIPOS_INSUMO, type TipoInsumo } from "@/lib/logistica";
+import { SECCION_ASEO, SECCION_GENERAL, type TipoConteoInventario } from "@/lib/inventarioOperativo";
 
 interface Insumo {
   id: string;
@@ -20,6 +21,14 @@ interface Insumo {
   unidades_por_formato: number | null;
   ml_por_unidad: number | null;
   activo: boolean | null;
+  seccion_inventario: string;
+  grupo_inventario: string | null;
+  presentacion_inventario: string | null;
+  orden_visual: number | null;
+  orden_presentacion: number;
+  tipo_conteo: TipoConteoInventario;
+  paso_conteo: number;
+  maximo_conteo: number | null;
 }
 
 type Draft = {
@@ -33,6 +42,13 @@ type Draft = {
   usaMl: boolean;
   ml_por_unidad: string;
   activo: boolean;
+  seccion_inventario: string;
+  grupo_inventario: string;
+  presentacion_inventario: string;
+  orden_visual: string;
+  orden_presentacion: string;
+  tipo_conteo: TipoConteoInventario;
+  paso_conteo: string;
 };
 
 const emptyDraft: Draft = {
@@ -45,6 +61,13 @@ const emptyDraft: Draft = {
   usaMl: false,
   ml_por_unidad: "",
   activo: true,
+  seccion_inventario: SECCION_GENERAL,
+  grupo_inventario: "",
+  presentacion_inventario: "",
+  orden_visual: "",
+  orden_presentacion: "1",
+  tipo_conteo: "entero",
+  paso_conteo: "1",
 };
 
 const fromInsumo = (i: Insumo): Draft => ({
@@ -58,6 +81,13 @@ const fromInsumo = (i: Insumo): Draft => ({
   usaMl: i.ml_por_unidad != null && Number(i.ml_por_unidad) > 0,
   ml_por_unidad: i.ml_por_unidad != null ? String(i.ml_por_unidad) : "",
   activo: i.activo !== false,
+  seccion_inventario: i.seccion_inventario || SECCION_GENERAL,
+  grupo_inventario: i.grupo_inventario ?? "",
+  presentacion_inventario: i.presentacion_inventario ?? "",
+  orden_visual: i.orden_visual != null ? String(i.orden_visual) : "",
+  orden_presentacion: String(i.orden_presentacion ?? 1),
+  tipo_conteo: i.tipo_conteo ?? "entero",
+  paso_conteo: String(i.paso_conteo ?? 1),
 });
 
 export default function InsumosPage() {
@@ -72,8 +102,10 @@ export default function InsumosPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from("insumos")
-      .select("id,nombre,tipo,unidad,formato_mayor,unidades_por_formato,ml_por_unidad,activo")
+      .select("id,nombre,tipo,unidad,formato_mayor,unidades_por_formato,ml_por_unidad,activo,seccion_inventario,grupo_inventario,presentacion_inventario,orden_visual,orden_presentacion,tipo_conteo,paso_conteo,maximo_conteo")
       .order("tipo")
+      .order("orden_visual", { ascending: true, nullsFirst: false })
+      .order("orden_presentacion", { ascending: true })
       .order("nombre");
     if (error) toast.error("Error cargando insumos");
     setItems((data as Insumo[]) ?? []);
@@ -108,6 +140,12 @@ export default function InsumosPage() {
     }
     if (draft.usaMl && (!draft.ml_por_unidad || Number(draft.ml_por_unidad) <= 0))
       return toast.error("ML/GR por unidad debe ser mayor a 0");
+    if (draft.orden_visual && (!Number.isInteger(Number(draft.orden_visual)) || Number(draft.orden_visual) <= 0))
+      return toast.error("El orden del producto debe ser un entero mayor a 0");
+    if (!Number.isInteger(Number(draft.orden_presentacion)) || Number(draft.orden_presentacion) <= 0)
+      return toast.error("El orden de presentación debe ser un entero mayor a 0");
+    if (!draft.paso_conteo || Number(draft.paso_conteo) <= 0)
+      return toast.error("El paso de conteo debe ser mayor a 0");
 
     setSaving(true);
     const payload = {
@@ -118,6 +156,14 @@ export default function InsumosPage() {
       unidades_por_formato: draft.tienePack ? Number(draft.unidades_por_formato) : null,
       ml_por_unidad: draft.usaMl ? Number(draft.ml_por_unidad) : null,
       activo: draft.activo,
+      seccion_inventario: draft.seccion_inventario.trim() || SECCION_GENERAL,
+      grupo_inventario: draft.grupo_inventario.trim() || null,
+      presentacion_inventario: draft.presentacion_inventario.trim() || null,
+      orden_visual: draft.orden_visual ? Number(draft.orden_visual) : null,
+      orden_presentacion: Number(draft.orden_presentacion) || 1,
+      tipo_conteo: draft.tipo_conteo,
+      paso_conteo: Number(draft.paso_conteo) || 1,
+      maximo_conteo: draft.tipo_conteo === "porcentaje" ? 100 : null,
     };
     let error;
     if (draft.id) {
@@ -330,6 +376,58 @@ export default function InsumosPage() {
                   />
                 </div>
               )}
+
+              <div className="rounded-lg border border-border p-4 space-y-3">
+                <div>
+                  <Label className="text-sm">Organización del inventario</Label>
+                  <p className="text-xs text-muted-foreground">Define la sección y el orden operativo sin cambiar el stock.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Sección</Label>
+                    <Select value={draft.seccion_inventario} onValueChange={(v) => setDraft({ ...draft, seccion_inventario: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={SECCION_GENERAL}>{SECCION_GENERAL}</SelectItem>
+                        <SelectItem value={SECCION_ASEO}>{SECCION_ASEO}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Grupo / producto</Label>
+                    <Input placeholder="Ej: Ron" value={draft.grupo_inventario} onChange={(e) => setDraft({ ...draft, grupo_inventario: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Presentación</Label>
+                    <Input placeholder="Ej: Cajas" value={draft.presentacion_inventario} onChange={(e) => setDraft({ ...draft, presentacion_inventario: e.target.value })} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-2">
+                      <Label>Orden producto</Label>
+                      <Input type="number" min="1" step="1" value={draft.orden_visual} onChange={(e) => setDraft({ ...draft, orden_visual: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Orden presentación</Label>
+                      <Input type="number" min="1" step="1" value={draft.orden_presentacion} onChange={(e) => setDraft({ ...draft, orden_presentacion: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tipo de conteo</Label>
+                    <Select value={draft.tipo_conteo} onValueChange={(v) => setDraft({ ...draft, tipo_conteo: v as TipoConteoInventario, paso_conteo: v === "entero" ? "1" : "0.5" })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="entero">Entero</SelectItem>
+                        <SelectItem value="decimal">Fraccionario</SelectItem>
+                        <SelectItem value="porcentaje">Porcentaje (0–100)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Paso</Label>
+                    <Input type="number" min="0.01" step="0.01" value={draft.paso_conteo} onChange={(e) => setDraft({ ...draft, paso_conteo: e.target.value })} />
+                  </div>
+                </div>
+              </div>
 
               <div className="flex items-center justify-between rounded-lg border border-border p-3">
                 <Label className="text-sm">Activo</Label>

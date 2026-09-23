@@ -1,6 +1,8 @@
 import * as React from "react";
 
-const MOBILE_BREAKPOINT = 768;
+// At this width the desktop sidebar consumes too much of the useful area on
+// compact notebooks (especially when Windows display scaling is enabled).
+const MOBILE_BREAKPOINT = 1100;
 
 export function useIsMobile() {
   const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);

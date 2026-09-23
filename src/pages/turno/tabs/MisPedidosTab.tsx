@@ -2143,7 +2143,7 @@ function PedidoDetalleModal({
             }
           }}
         >
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md p-4 sm:p-6">
             <DialogHeader>
               <DialogTitle>
                 {pasoEntrega === "jarros"
@@ -2157,9 +2157,9 @@ function PedidoDetalleModal({
             </DialogHeader>
             <div className="space-y-4">
               {pasoEntrega === "pago" && (
-              <div className="text-center bg-background border border-border rounded-md p-4">
+              <div className="text-center bg-background border border-border rounded-md p-3 sm:p-4">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Total a cobrar</div>
-                <div className="font-display text-4xl text-primary font-bold">
+                <div className="font-display text-3xl sm:text-4xl text-primary font-bold break-words">
                   {fmtCLP(totalACobrar)}
                 </div>
                 {esEntregaGratuita && (
@@ -2169,7 +2169,7 @@ function PedidoDetalleModal({
               )}
 
               {pasoEntrega === "pago" && sinJarrosDeclarados && (
-              <div className="space-y-3 border border-primary/30 bg-primary/5 rounded-lg p-4">
+              <div className="space-y-3 border border-primary/30 bg-primary/5 rounded-lg p-3 sm:p-4">
                 <div className="text-center space-y-1">
                   <div className="text-sm font-bold uppercase tracking-wider text-primary">
                     🫙 ¿El cliente entrega jarros retornables?
@@ -2224,7 +2224,7 @@ function PedidoDetalleModal({
               )}
 
               {pasoEntrega === "jarros" && (
-              <div className="space-y-5 border border-primary/30 bg-primary/5 rounded-lg p-5">
+              <div className="space-y-5 border border-primary/30 bg-primary/5 rounded-lg p-3 sm:p-5">
                 <div className="text-center space-y-3">
                   <div className="text-sm font-bold uppercase tracking-wider text-primary">🫙 Jarros retornables</div>
                   <p className="text-sm text-muted-foreground">
@@ -2263,7 +2263,7 @@ function PedidoDetalleModal({
               )}
 
               {pasoEntrega === "jarros_cantidad" && (
-              <div className="space-y-4 border border-destructive/30 bg-destructive/5 rounded-lg p-5">
+              <div className="space-y-4 border border-destructive/30 bg-destructive/5 rounded-lg p-3 sm:p-5">
                 <div className="text-center space-y-2">
                   <p className="text-base font-medium">¿Cuántos jarros entregó realmente?</p>
                   <p className="text-xs text-muted-foreground">
@@ -2305,14 +2305,14 @@ function PedidoDetalleModal({
                     Total: {fmtCLP(totalParcialPreview)}
                   </p>
                 </div>
-                <div className="flex gap-2 justify-end">
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
                   <Button variant="ghost" onClick={() => setPasoEntrega("jarros")} disabled={pagoSaving}>
                     Volver
                   </Button>
                   <Button
                     onClick={confirmarJarrosCantidad}
                     disabled={pagoSaving}
-                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-6"
+                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold sm:px-6"
                   >
                     {pagoSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                     Confirmar
@@ -2399,15 +2399,15 @@ function PedidoDetalleModal({
                 </div>
               )}
 
-              <div className="flex gap-2 justify-end">
+              <div className="grid grid-cols-1 min-[440px]:grid-cols-[auto_minmax(0,1fr)] gap-2 min-[440px]:justify-end">
                 {pasoEntrega !== "jarros_cantidad" && (
-                <Button variant="ghost" onClick={() => { setPagoOpen(false); setPasoEntrega("jarros"); setEntregoJarros(null); setJarrosRealesInput("0"); }} disabled={pagoSaving}>Cancelar</Button>
+                <Button variant="ghost" className="w-full min-[440px]:w-auto" onClick={() => { setPagoOpen(false); setPasoEntrega("jarros"); setEntregoJarros(null); setJarrosRealesInput("0"); }} disabled={pagoSaving}>Cancelar</Button>
                 )}
                 {pasoEntrega === "pago" && (esEntregaGratuita ? (
                   <Button
                     onClick={confirmarEntregaGratuita}
                     disabled={pagoSaving}
-                    className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
                   >
                     {pagoSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                     Confirmar entrega gratuita
@@ -2417,8 +2417,8 @@ function PedidoDetalleModal({
                   onClick={confirmarPago}
                   disabled={pagoSaving || pagoIngresado <= 0}
                   className={pagoDiferencia < 0
-                    ? "bg-orange-500 hover:bg-orange-600 text-white"
-                    : "bg-success hover:bg-success/90 text-success-foreground"}
+                    ? "w-full bg-orange-500 hover:bg-orange-600 text-white"
+                    : "w-full bg-success hover:bg-success/90 text-success-foreground"}
                 >
                   {pagoSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                   {pagoDiferencia < 0 ? "Registrar con diferencia" : "Marcar como entregado"}

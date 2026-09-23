@@ -757,10 +757,10 @@ export default function MapaDespachos() {
 
   return (
     <>
-      <div className="flex h-[calc(100vh-120px)] rounded-xl overflow-hidden border border-border">
+      <div className="flex min-h-[calc(100svh_-_7rem)] flex-col rounded-xl border border-border lg:h-[calc(100vh_-_120px)] lg:min-h-0 lg:flex-row lg:overflow-hidden">
 
         {/* ── MAPA 60% ──────────────────────────────────────────────────── */}
-        <div className="relative flex-[3] min-w-0">
+        <div className="relative min-h-[45svh] flex-[3] min-w-0 lg:min-h-0">
           {cargando && (
             <div className="absolute inset-0 bg-background/70 backdrop-blur-sm flex items-center justify-center z-20">
               <Loader2 className="h-5 w-5 animate-spin mr-2 text-muted-foreground" />
@@ -809,7 +809,7 @@ export default function MapaDespachos() {
         </div>
 
         {/* ── PEDIDOS 20% ───────────────────────────────────────────────── */}
-        <div className="flex-1 border-l border-border flex flex-col bg-card min-w-0">
+        <div className="flex-1 min-h-72 border-t border-border flex flex-col bg-card min-w-0 lg:min-h-0 lg:border-l lg:border-t-0">
           <div className="px-3 py-3 border-b border-border shrink-0 space-y-1.5">
             <div className="flex items-center justify-between">
               <h2 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
@@ -896,7 +896,7 @@ export default function MapaDespachos() {
         </div>
 
         {/* ── DESPACHADORES 20% ─────────────────────────────────────────── */}
-        <div className="flex-1 border-l border-border flex flex-col bg-card min-w-0">
+        <div className="flex-1 min-h-72 border-t border-border flex flex-col bg-card min-w-0 lg:min-h-0 lg:border-l lg:border-t-0">
           <div className="px-3 py-3 border-b border-border shrink-0">
             <h2 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground">
               Despachadores activos

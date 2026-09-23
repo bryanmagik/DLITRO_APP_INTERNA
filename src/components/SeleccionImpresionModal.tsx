@@ -166,7 +166,7 @@ export default function SeleccionImpresionModal({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !imprimiendo && !o && onClose()}>
-      <DialogContent className="max-w-lg w-full min-w-[400px] p-6">
+      <DialogContent className="max-w-lg p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-center text-lg">
             {editado ? "Pedido editado — ¿qué deseas reimprimir?" : "¿Qué deseas imprimir?"}

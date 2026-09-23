@@ -329,6 +329,7 @@ function DespacharModal({
                           ins,
                         )}
                         onChange={(v) => {
+                          if (v === null) return;
                           const { cajas, unidades } = mlACajasUnidades(
                             v,
                             ins?.unidades_por_formato ?? null,
@@ -536,6 +537,7 @@ function NuevoEnvioModal({
                                 insumo={i}
                                 valorMl={base}
                                 onChange={(v) => {
+                                  if (v === null) return;
                                   const { cajas, unidades } = mlACajasUnidades(
                                     v,
                                     i.unidades_por_formato ?? null,
