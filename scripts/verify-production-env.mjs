@@ -54,6 +54,10 @@ if (!env.VITE_SUPABASE_PUBLISHABLE_KEY) {
   failures.push("La clave configurada no tiene un formato publico reconocido.");
 }
 
+if (!/^AIza[A-Za-z0-9_-]{35}$/.test(env.VITE_GOOGLE_MAPS_API_KEY ?? "")) {
+  failures.push("Falta una VITE_GOOGLE_MAPS_API_KEY valida para produccion.");
+}
+
 for (const name of Object.keys(env)) {
   if (/SERVICE_ROLE|SECRET_KEY|PRIVATE_KEY/i.test(name)) {
     failures.push(`Variable privilegiada no permitida en frontend: ${name}.`);
