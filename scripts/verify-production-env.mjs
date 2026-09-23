@@ -31,30 +31,31 @@ if (!existsSync(envPath)) {
 
 const envContents = readFileSync(envPath, "utf8");
 const env = parseEnv(envContents);
+const effectiveEnv = (name) => process.env[name] ?? env[name];
 const failures = [];
 
 if (envContents.includes(STAGING_REF)) {
   failures.push("Se detecto la referencia de STAGING en la configuracion de produccion.");
 }
 
-if (env.VITE_SUPABASE_PROJECT_ID !== PRODUCTION_REF) {
+if (effectiveEnv("VITE_SUPABASE_PROJECT_ID") !== PRODUCTION_REF) {
   failures.push(`VITE_SUPABASE_PROJECT_ID debe ser ${PRODUCTION_REF}.`);
 }
 
-if (env.VITE_SUPABASE_URL !== PRODUCTION_URL) {
+if (effectiveEnv("VITE_SUPABASE_URL") !== PRODUCTION_URL) {
   failures.push(`VITE_SUPABASE_URL debe ser ${PRODUCTION_URL}.`);
 }
 
-if (!env.VITE_SUPABASE_PUBLISHABLE_KEY) {
+if (!effectiveEnv("VITE_SUPABASE_PUBLISHABLE_KEY")) {
   failures.push("Falta VITE_SUPABASE_PUBLISHABLE_KEY de produccion.");
 } else if (
-  !env.VITE_SUPABASE_PUBLISHABLE_KEY.startsWith("sb_publishable_") &&
-  !env.VITE_SUPABASE_PUBLISHABLE_KEY.startsWith("eyJ")
+  !effectiveEnv("VITE_SUPABASE_PUBLISHABLE_KEY").startsWith("sb_publishable_") &&
+  !effectiveEnv("VITE_SUPABASE_PUBLISHABLE_KEY").startsWith("eyJ")
 ) {
   failures.push("La clave configurada no tiene un formato publico reconocido.");
 }
 
-if (!/^AIza[A-Za-z0-9_-]{35}$/.test(env.VITE_GOOGLE_MAPS_API_KEY ?? "")) {
+if (!/^AIza[A-Za-z0-9_-]{35}$/.test(effectiveEnv("VITE_GOOGLE_MAPS_API_KEY") ?? "")) {
   failures.push("Falta una VITE_GOOGLE_MAPS_API_KEY valida para produccion.");
 }
 
