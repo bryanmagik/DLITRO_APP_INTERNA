@@ -158,9 +158,11 @@ begin
   select count(*) into v_logs from public.log_cambios_pedido
    where pedido_id = v_pedido.id and tipo_evento = 'pedido_corregido_post_cierre';
   select count(*) into v_user_logs from public.log_cambios_pedido
-   where pedido_id = v_pedido.id and usuario_id = '9bbbbbbb-0000-4000-8000-000000000003';
+   where pedido_id = v_pedido.id and usuario_id = '9bbbbbbb-0000-4000-8000-000000000003'
+     and tipo_evento in ('pedido_corregido_post_cierre','pagos_corregidos_post_cierre');
   select count(*) into v_branch_logs from public.log_cambios_pedido
-   where pedido_id = v_pedido.id and sucursal_id = '9aaaaaaa-0000-4000-8000-00000000000a';
+   where pedido_id = v_pedido.id and sucursal_id = '9aaaaaaa-0000-4000-8000-00000000000a'
+     and tipo_evento in ('pedido_corregido_post_cierre','pagos_corregidos_post_cierre');
   call pg_temp.record('tomador_a', 'entregado: mantiene estado', v_pedido.estado::text, 'entregado', 'no reabre flujo operacional');
   call pg_temp.record('tomador_a', 'entregado: corrige forma de pago', v_pedido.metodo_pago::text, 'efectivo', 'pedidos sincronizado');
   call pg_temp.record('tomador_a', 'entregado: sincroniza pagos sin cambiar monto', v_pago::text, 'efectivo', 'pagos_turno sincronizado');

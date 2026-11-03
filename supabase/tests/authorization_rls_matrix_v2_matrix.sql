@@ -87,6 +87,8 @@ insert into public.categorias (id, nombre) values
   ('fcccccc0-0000-4000-8000-000000000001', 'RLS V2 Categoria');
 insert into public.productos (id, nombre, precio, categoria_id) values
   ('fcccccc0-0000-4000-8000-000000000002', 'RLS V2 Producto', 1000, 'fcccccc0-0000-4000-8000-000000000001');
+insert into public.precios_trabajador (id, producto_id, precio_trabajador, activo) values
+  ('fcccccc0-0000-4000-8000-000000000004', 'fcccccc0-0000-4000-8000-000000000002', 800, true);
 insert into public.insumos (id, nombre, tipo, costo_unitario) values
   ('fcccccc0-0000-4000-8000-000000000003', 'RLS V2 Insumo', 'materia_prima', 100);
 insert into public.clientes (id, nombre) values
@@ -516,6 +518,18 @@ select pg_temp.as_actor('fbbbbbbb-0000-4000-8000-000000000003'); -- encargado_a:
 select pg_temp.chk_update_noop('encargado_a', 'productos', 'no_catalog_manage', 'fcccccc0-0000-4000-8000-000000000002', 'DENY');
 select pg_temp.as_actor('fbbbbbbb-0000-4000-8000-000000000001'); -- admin_a
 select pg_temp.chk_update_noop('admin_a', 'productos', 'catalog_manage', 'fcccccc0-0000-4000-8000-000000000002', 'ALLOW');
+
+-- Worker prices are visible to order entry, but only administrators can edit them.
+select pg_temp.as_actor('fbbbbbbb-0000-4000-8000-000000000004'); -- tomador_a
+select pg_temp.chk_select('tomador_a', 'precios_trabajador', 'order_entry', 'fcccccc0-0000-4000-8000-000000000004', 'ALLOW');
+select pg_temp.chk_update_noop('tomador_a', 'precios_trabajador', 'no_worker_prices_manage', 'fcccccc0-0000-4000-8000-000000000004', 'DENY');
+select pg_temp.as_actor('fbbbbbbb-0000-4000-8000-000000000003'); -- encargado_a
+select pg_temp.chk_select('encargado_a', 'precios_trabajador', 'order_entry', 'fcccccc0-0000-4000-8000-000000000004', 'ALLOW');
+select pg_temp.as_actor('fbbbbbbb-0000-4000-8000-000000000005'); -- preparador_a
+select pg_temp.chk_select('preparador_a', 'precios_trabajador', 'no_order_entry', 'fcccccc0-0000-4000-8000-000000000004', 'DENY');
+select pg_temp.as_actor('fbbbbbbb-0000-4000-8000-000000000001'); -- admin_a
+select pg_temp.chk_select('admin_a', 'precios_trabajador', 'worker_prices_manage', 'fcccccc0-0000-4000-8000-000000000004', 'ALLOW');
+select pg_temp.chk_update_noop('admin_a', 'precios_trabajador', 'worker_prices_manage', 'fcccccc0-0000-4000-8000-000000000004', 'ALLOW');
 
 -- ---------------------------------------------------------------------------
 -- Report and rollback. Nothing above this line is ever persisted.

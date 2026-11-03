@@ -90,7 +90,6 @@ Deno.serve(async (req) => {
     // ── Paso 4: leer y validar payload ────────────────────────────────────
     console.log("[crear-usuario] Paso 4 — leyendo body");
     const body = (await req.json()) as Payload;
-    console.log("[crear-usuario] Paso 4 — email:", body?.email, "nombre:", body?.nombre, "rol:", body?.rol);
 
     if (!body.email?.trim() || !body.password || !body.nombre?.trim() || !body.rol) {
       return new Response(JSON.stringify({ error: "Faltan campos requeridos: email, password, nombre, rol" }), {
@@ -107,6 +106,17 @@ Deno.serve(async (req) => {
     }
 
     const rolesOperacionales = ["tomador_pedidos", "preparador", "despachador"];
+    const rolesPermitidos = ["superadmin", "dueno_dlitro", "admin", "encargado", "tomador_pedidos", "preparador", "despachador", "jefe_bodega", "logistica", "contador_rrhh"];
+    if (!rolesPermitidos.includes(body.rol)) {
+      return new Response(JSON.stringify({ error: "Rol inválido" }), {
+        status: 400, headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+    if (["superadmin", "dueno_dlitro"].includes(body.rol) && callerPerfil.rol !== "superadmin") {
+      return new Response(JSON.stringify({ error: "Solo superadmin puede crear este perfil" }), {
+        status: 403, headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
     if (callerPerfil.rol === "encargado") {
       if (!rolesOperacionales.includes(body.rol)) {
         return new Response(JSON.stringify({ error: "El encargado solo puede crear roles operacionales" }), {
@@ -123,7 +133,6 @@ Deno.serve(async (req) => {
     }
 
     // ── Paso 5: crear usuario en Supabase Auth ────────────────────────────
-    console.log("[crear-usuario] Paso 5 — createUser en Auth:", body.email.trim().toLowerCase());
     const { data: authData, error: authError } = await supabaseService.auth.admin.createUser({
       email: body.email.trim().toLowerCase(),
       password: body.password,
