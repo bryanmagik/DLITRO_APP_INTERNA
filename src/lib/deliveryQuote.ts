@@ -15,22 +15,20 @@ export function haversineDistanceKm(lat1: number, lon1: number, lat2: number, lo
   return 2 * earthRadiusKm * Math.asin(Math.sqrt(a));
 }
 
-function fallbackDeliveryCost(km: number): number {
-  const base = 2000;
-  const tramoKm = 3.5;
-  const extraPorTramo = 1000;
-  if (km <= tramoKm) return base;
-  return base + Math.ceil((km - tramoKm) / tramoKm) * extraPorTramo;
-}
-
-export function calculateDeliveryCost(km: number, tarifas: TarifaDespacho[]): number {
-  if (!tarifas.length) return fallbackDeliveryCost(km);
+export function calculateConfiguredDeliveryCost(km: number, tarifas: TarifaDespacho[]): number | null {
+  if (!Number.isFinite(km) || km < 0 || !tarifas.length) return null;
   const sorted = [...tarifas].sort((a, b) => a.tramo - b.tramo);
   const match = sorted.find((tarifa) => (
     km >= Number(tarifa.distancia_desde) && km < Number(tarifa.distancia_hasta)
   ));
-  if (match) return Number(match.precio);
-  return Number(sorted[sorted.length - 1]?.precio) || fallbackDeliveryCost(km);
+  const precio = Number((match ?? sorted[sorted.length - 1]).precio);
+  return Number.isSafeInteger(precio) && precio >= 0 ? precio : null;
+}
+
+export function parseDeliveryCost(value: string): number | null {
+  if (!value.trim()) return null;
+  const cost = Number(value);
+  return Number.isSafeInteger(cost) && cost >= 0 ? cost : null;
 }
 
 export function hasValidDeliveryCoordinates(lat: number | null, lng: number | null): boolean {

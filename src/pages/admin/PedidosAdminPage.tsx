@@ -103,7 +103,7 @@ const labelMetodoPago = (m: string | null | undefined) => {
 const hoyChile = () =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" }).format(new Date());
 
-const str = (v: unknown) => (v == null ? "" : String(v));
+
 
 export default function PedidosAdminPage() {
   const { perfil } = useAuthStore();
@@ -153,7 +153,9 @@ export default function PedidosAdminPage() {
       .order("numero_pedido", { ascending: false });
 
     if (estadoFiltro !== "__all__") pedQ = pedQ.eq("estado", estadoFiltro as Estado);
-    if (tipoFiltro !== "__all__") pedQ = pedQ.eq("tipo", tipoFiltro as TipoPedido);
+    if (tipoFiltro === "retiro") pedQ = pedQ.in("tipo", ["retiro", "local"]);
+    else if (tipoFiltro === "despacho") pedQ = pedQ.in("tipo", ["despacho", "delivery"]);
+    else if (tipoFiltro !== "__all__") pedQ = pedQ.eq("tipo", tipoFiltro as TipoPedido);
 
     const { data: pedData, error: pedErr } = await pedQ;
     if (pedErr) {
@@ -580,43 +582,6 @@ function PedidoEditModal({
 
     setSaving(true);
 
-    const logs: Array<{
-      pedido_id: string;
-      usuario_id: string;
-      campo: string;
-      valor_anterior: string;
-      valor_nuevo: string;
-    }> = [];
-
-    const origMap: Record<string, unknown> = {
-      cliente_nombre: pedido.cliente_nombre,
-      cliente_telefono: pedido.cliente_telefono,
-      tipo: pedido.tipo,
-      direccion_entrega: pedido.direccion_entrega,
-      referencia_entrega: pedido.referencia_entrega,
-      despachador_id: pedido.despachador_id,
-      estado: pedido.estado,
-      metodo_pago: pedido.metodo_pago,
-      referencia_pago: pedido.referencia_pago,
-      pago_registrado: pedido.pago_registrado,
-      notas: pedido.notas,
-      subtotal: pedido.subtotal,
-      total: pedido.total,
-    };
-
-    for (const [campo, valorNuevo] of Object.entries(updatePayload)) {
-      const ant = origMap[campo];
-      if (str(ant) !== str(valorNuevo)) {
-        logs.push({
-          pedido_id: pedido.id,
-          usuario_id: perfil.id,
-          campo,
-          valor_anterior: str(ant),
-          valor_nuevo: str(valorNuevo),
-        });
-      }
-    }
-
     const { error: upErr } = await supabase.from("pedidos").update(updatePayload).eq("id", pedido.id);
     if (upErr) {
       setSaving(false);
@@ -667,23 +632,6 @@ function PedidoEditModal({
           return;
         }
       }
-    }
-
-    const itemsChanged =
-      removed.length > 0 ||
-      items.some((i) => !i.id) ||
-      items.some((i) => {
-        const o = originalItems.find((x) => x.id === i.id);
-        return o && (o.cantidad !== i.cantidad || o.precio_unitario !== i.precio_unitario);
-      });
-    if (itemsChanged) {
-      logs.push({
-        pedido_id: pedido.id,
-        usuario_id: perfil.id,
-        campo: "items",
-        valor_anterior: JSON.stringify(originalItems.map((i) => ({ n: i.nombre, c: i.cantidad, p: i.precio_unitario }))),
-        valor_nuevo: JSON.stringify(items.map((i) => ({ n: i.nombre, c: i.cantidad, p: i.precio_unitario }))),
-      });
     }
 
     // pagos_turno: reemplazar según montos del formulario (nunca reinsertar si cancelado)
@@ -742,31 +690,7 @@ function PedidoEditModal({
           }
         }
 
-        const pagosAntes = pagosDetalle.map((p) => `${p.metodo}:${p.monto}`).join(",");
-        const pagosNuevos = inserts.map((p) => `${p.metodo}:${p.monto}`).join(",");
-        if (pagosAntes !== pagosNuevos) {
-          logs.push({
-            pedido_id: pedido.id,
-            usuario_id: perfil.id,
-            campo: "pagos_turno",
-            valor_anterior: pagosAntes || "(vacío)",
-            valor_nuevo: pagosNuevos || "(vacío)",
-          });
-        }
-      } else if (cancelando && (pedido.pago_registrado || pagosDetalle.length > 0)) {
-        logs.push({
-          pedido_id: pedido.id,
-          usuario_id: perfil.id,
-          campo: "pagos_turno",
-          valor_anterior: pagosDetalle.map((p) => `${p.metodo}:${p.monto}`).join(",") || "(registrado)",
-          valor_nuevo: "(eliminado por cancelación)",
-        });
       }
-    }
-
-    if (logs.length > 0) {
-      const { error: logErr } = await supabase.from("log_cambios_pedido").insert(logs);
-      if (logErr) console.warn("[log_cambios_pedido]", logErr.message);
     }
 
     setSaving(false);

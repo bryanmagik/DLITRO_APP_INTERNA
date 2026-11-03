@@ -47,7 +47,7 @@ interface TurnoDespachadorQueryRow {
 interface Sucursal {
   id: string;
   nombre: string;
-  direccion: string;
+  direccion: string | null;
   latitud: number;
   longitud: number;
 }
@@ -260,14 +260,14 @@ export default function MapaDespachos() {
 
   const cargarSucursal = useCallback(async () => {
     if (!perfil?.sucursal_id) return;
-    const { data } = await supabase
-      .from("sucursales")
-      .select("id, nombre, direccion, latitud, longitud")
-      .eq("activo", true)
-      .not("latitud", "is", null)
-      .not("longitud", "is", null);
-    if (!data) return;
-    const todas = data as Sucursal[];
+    const { data, error: err } = await supabase.rpc("sucursales_mapa_despachos");
+    if (err) {
+      setTodasSucursales([]);
+      setSucursal(null);
+      setError("No se pudieron cargar las ubicaciones de las sucursales. Vuelve a abrir el mapa para reintentar.");
+      return;
+    }
+    const todas: Sucursal[] = data ?? [];
     setTodasSucursales(todas);
     const propia = todas.find((s) => s.id === perfil.sucursal_id) ?? null;
     setSucursal(propia);
@@ -374,7 +374,7 @@ export default function MapaDespachos() {
   // ── Marcadores de todas las sucursales ────────────────────────────────────
 
   useEffect(() => {
-    if (!gmapRef.current || todasSucursales.length === 0) return;
+    if (!gmapRef.current) return;
 
     // Limpiar marcadores anteriores
     sucursalMarkersRef.current.forEach((m) => m.setMap(null));
@@ -401,10 +401,10 @@ export default function MapaDespachos() {
       const iwContent = `
         <div style="font-family:Inter,sans-serif;padding:6px 8px;min-width:160px">
           <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
-            <strong style="font-size:13px;color:${color}">🏠 ${suc.nombre}</strong>
+            <strong style="font-size:13px;color:${color}">🏠 ${escapeHtml(suc.nombre)}</strong>
             ${activa ? `<span style="font-size:10px;background:#dcfce7;color:#16a34a;padding:1px 5px;border-radius:4px;font-weight:600">Tu sucursal</span>` : ""}
           </div>
-          <span style="font-size:11px;color:#6b7280">${suc.direccion}</span>
+          <span style="font-size:11px;color:#6b7280">${escapeHtml(suc.direccion ?? "")}</span>
         </div>`;
 
       const iw = new google.maps.InfoWindow({ content: iwContent });

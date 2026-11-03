@@ -24,7 +24,7 @@ import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { loadGoogleMaps } from "@/lib/googleMaps";
 import { precioSaborParaProducto, precioTotalSabores, saboresConPrecioAplicable } from "@/lib/precioSaboresExtra";
 import type { TablesInsert } from "@/integrations/supabase/types";
-import { calculateDeliveryCost, haversineDistanceKm, type TarifaDespacho } from "@/lib/deliveryQuote";
+import { calculateConfiguredDeliveryCost, hasValidDeliveryCoordinates, haversineDistanceKm, parseDeliveryCost, type TarifaDespacho } from "@/lib/deliveryQuote";
 import {
   buildPagoEsperadoDetalle,
   METODOS_PAGO_ESPERADO,
@@ -115,7 +115,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
   const [referencia, setReferencia] = useState("");
   const [latStr, setLatStr] = useState("");
   const [lonStr, setLonStr] = useState("");
-  const [costoDespachoStr, setCostoDespachoStr] = useState<string>("0");
+  const [costoDespachoStr, setCostoDespachoStr] = useState<string>("");
   const [direccionError, setDireccionError] = useState(false);
   const [descuento, setDescuento] = useState<string>("0");
   const [notas, setNotas] = useState("");
@@ -429,19 +429,32 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
 
   const [distanciaApi, setDistanciaApi] = useState<number | null>(null);
   const [tarifasDespacho, setTarifasDespacho] = useState<TarifaDespacho[]>([]);
+  const [tarifasStatus, setTarifasStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [tarifasReloadKey, setTarifasReloadKey] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+    setTarifasStatus("loading");
     (async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("tarifas_despacho")
         .select("tramo, distancia_desde, distancia_hasta, precio")
         .order("tramo");
-      if (data) setTarifasDespacho(data as unknown as TarifaDespacho[]);
+      if (cancelled) return;
+      if (error || !data?.length) {
+        setTarifasDespacho([]);
+        setTarifasStatus("error");
+      } else {
+        setTarifasDespacho(data as unknown as TarifaDespacho[]);
+        setTarifasStatus("ready");
+      }
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [tarifasReloadKey]);
 
   // Distancia real de manejo vía Google Distance Matrix
   useEffect(() => {
+    setDistanciaApi(null);
     if (tipo !== "delivery") { setDistanciaApi(null); return; }
     const lat = parseFloat(latStr), lon = parseFloat(lonStr);
     if (!sucursal?.latitud || !sucursal?.longitud || Number.isNaN(lat) || Number.isNaN(lon)) {
@@ -473,23 +486,27 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
   }, [tipo, latStr, lonStr, sucursal]);
 
   const distanciaKm = useMemo(() => {
-    if (tipo !== "delivery") return 0;
+    if (tipo !== "delivery") return null;
     if (distanciaApi != null) return distanciaApi;
     const lat = parseFloat(latStr), lon = parseFloat(lonStr);
-    if (!sucursal?.latitud || !sucursal?.longitud || Number.isNaN(lat) || Number.isNaN(lon)) return 0;
+    if (!hasValidDeliveryCoordinates(lat, lon)
+      || !hasValidDeliveryCoordinates(sucursal?.latitud == null ? null : Number(sucursal.latitud), sucursal?.longitud == null ? null : Number(sucursal.longitud))) return null;
     return haversineDistanceKm(Number(sucursal.latitud), Number(sucursal.longitud), lat, lon);
   }, [tipo, latStr, lonStr, sucursal, distanciaApi]);
 
   const costoDespachoCalc = useMemo(() => {
-    if (tipo !== "delivery" || !distanciaKm) return 0;
-    return calculateDeliveryCost(distanciaKm, tarifasDespacho);
-  }, [tipo, distanciaKm, tarifasDespacho]);
+    if (tipo !== "delivery" || distanciaKm == null || tarifasStatus !== "ready") return null;
+    return calculateConfiguredDeliveryCost(distanciaKm, tarifasDespacho);
+  }, [tipo, distanciaKm, tarifasDespacho, tarifasStatus]);
 
   useEffect(() => {
-    if (tipo === "delivery" && costoDespachoCalc > 0) setCostoDespachoStr(String(costoDespachoCalc));
+    if (tipo === "delivery") setCostoDespachoStr(costoDespachoCalc != null ? String(costoDespachoCalc) : "");
   }, [costoDespachoCalc, tipo]);
 
-  const costoDespacho = tipo === "delivery" ? Math.max(0, parseInt(costoDespachoStr || "0", 10) || 0) : 0;
+  const costoDespachoIngresado = parseDeliveryCost(costoDespachoStr);
+  const costoDespacho = tipo === "delivery" ? (costoDespachoIngresado ?? 0) : 0;
+  const tarifaPendiente = tipo === "delivery"
+    && (tarifasStatus !== "ready" || costoDespachoIngresado === null);
 
   const jarrosNum = esExterno ? 0 : Math.max(0, parseInt(jarrosDevueltos || "0", 10) || 0);
   const tragosGratisJarros = Math.floor(jarrosNum / 4);
@@ -573,7 +590,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
     setLineas([]); setClienteNombre(""); setClienteTelefono("");
     setEditingUid(null); setEditExtrasSel(new Set()); setEditNotas("");
     setDireccion(""); setReferencia(""); setLatStr(""); setLonStr("");
-    setCostoDespachoStr("0"); setDireccionError(false);
+    setCostoDespachoStr(""); setDireccionError(false);
     setDescuento("0"); setNotas(""); setHoraAgendada("");
     setJarrosDevueltos("0");
     setTragosGratisSel([]);
@@ -636,6 +653,12 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
 
   const guardar = async () => {
     if (!perfil) return;
+    if (tarifaPendiente) {
+      toast.error(tarifasStatus !== "ready"
+        ? "No se pudieron cargar las tarifas de despacho. Reintenta antes de guardar."
+        : "Ingresa un costo de envío válido en pesos antes de guardar.");
+      return;
+    }
     if (lineas.length === 0) { toast.error("Agregá al menos un producto"); return; }
     if (!clienteNombre.trim()) { toast.error("Ingresá el nombre del cliente"); return; }
     if (tipo === "delivery" && !direccion.trim()) {
@@ -689,7 +712,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
         referencia_entrega: tipo === "delivery" ? referencia.trim() || null : null,
         latitud_entrega: tipo === "delivery" && latStr ? parseFloat(latStr) : null,
         longitud_entrega: tipo === "delivery" && lonStr ? parseFloat(lonStr) : null,
-        distancia_km: tipo === "delivery" && distanciaKm ? Number(distanciaKm.toFixed(2)) : null,
+        distancia_km: tipo === "delivery" && distanciaKm != null ? Number(distanciaKm.toFixed(2)) : null,
         subtotal,
         descuento: desc,
         costo_despacho: costoDespacho,
@@ -933,7 +956,9 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
     } finally { setSaving(false); }
   };
 
-  if (loading) return <div className="p-12 flex items-center justify-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando catálogo…</div>;
+  if (loading || (tipo === "delivery" && tarifasStatus === "loading")) {
+    return <div className="p-12 flex items-center justify-center text-muted-foreground" role="status"><Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando catálogo y tarifas…</div>;
+  }
 
   const totalItems = lineas.reduce((a, l) => a + l.cantidad, 0);
   const submit = () => { setTimeout(guardar, 0); };
@@ -1015,10 +1040,16 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
                   placeholder="Nota Entrega / General (Ej: Tocar timbre…)" maxLength={200} className="bg-background" />
                 <div className="flex items-stretch rounded-md border border-input bg-background overflow-hidden">
                   <span className="flex items-center px-2 text-sm text-muted-foreground border-r border-input bg-muted/40">$</span>
-                  <Input type="number" min="0" value={costoDespachoStr} onChange={(e) => setCostoDespachoStr(e.target.value)} placeholder="Costo envío" className="border-0 bg-transparent font-mono focus-visible:ring-0" />
+                  <Input type="number" min="0" value={costoDespachoStr} onChange={(e) => setCostoDespachoStr(e.target.value)} placeholder="Costo envío" disabled={tarifasStatus !== "ready"} className="border-0 bg-transparent font-mono focus-visible:ring-0" />
                 </div>
               </div>
-              {distanciaKm > 0 && latStr && lonStr && (
+              {tarifasStatus === "error" && (
+                <div className="flex items-center gap-2 text-xs text-destructive" role="alert">
+                  <span>No se pudieron cargar las tarifas. No se puede cotizar el despacho.</span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setTarifasReloadKey((key) => key + 1)}>Reintentar</Button>
+                </div>
+              )}
+              {tarifasStatus === "ready" && distanciaKm != null && latStr && lonStr && (
                 <p className="text-xs font-mono text-muted-foreground px-0.5">
                   Distancia: {distanciaKm.toFixed(1)} km · Costo: {fmtCLP(costoDespacho)}
                 </p>
@@ -1495,11 +1526,11 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
 
           <div className="space-y-1 text-sm">
             <div className="flex justify-between text-muted-foreground"><span>Subtotal (Base)</span><span className="font-mono">{fmtCLP(subtotal)}</span></div>
-            {tipo === "delivery" && <div className="flex justify-between text-muted-foreground"><span>Envío</span><span className="font-mono">{fmtCLP(costoDespacho)}</span></div>}
+            {tipo === "delivery" && <div className="flex justify-between text-muted-foreground"><span>Envío</span><span className="font-mono">{tarifaPendiente ? "Tarifa no disponible" : fmtCLP(costoDespacho)}</span></div>}
             {desc > 0 && <div className="flex justify-between text-muted-foreground"><span>Descuentos</span><span className="font-mono">-{fmtCLP(desc)}</span></div>}
             <div className="flex justify-between items-baseline pt-2 mt-1 border-t border-border">
               <span className="font-bold uppercase tracking-wider text-foreground">Total a Pagar</span>
-              <span className="font-mono font-extrabold text-3xl text-primary">{fmtCLP(total)}</span>
+              <span className="font-mono font-extrabold text-3xl text-primary">{tarifaPendiente ? "—" : fmtCLP(total)}</span>
             </div>
           </div>
 
@@ -1585,7 +1616,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
             <Button
               type="button"
               variant="secondary"
-              disabled={saving || lineas.length === 0 || (yaPago && !pagoYaCuadra) || (!yaPago && !!errorPagoEsperado)}
+              disabled={saving || lineas.length === 0 || tarifaPendiente || (yaPago && !pagoYaCuadra) || (!yaPago && !!errorPagoEsperado)}
               onClick={submit}
               className="h-11 min-[440px]:h-12 font-bold uppercase text-xs min-[440px]:flex-col gap-1 min-[440px]:gap-0.5"
             >
@@ -1593,7 +1624,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
             </Button>
             <Button
               type="button"
-              disabled={saving || lineas.length === 0 || (yaPago && !pagoYaCuadra) || (!yaPago && !!errorPagoEsperado)}
+              disabled={saving || lineas.length === 0 || tarifaPendiente || (yaPago && !pagoYaCuadra) || (!yaPago && !!errorPagoEsperado)}
               onClick={submit}
               className={cn(
                 "h-11 min-[440px]:h-12 font-bold uppercase text-xs min-[440px]:flex-col gap-1 min-[440px]:gap-0.5",

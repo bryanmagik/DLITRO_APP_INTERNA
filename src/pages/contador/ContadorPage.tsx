@@ -28,12 +28,14 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { tipoMeta } from "@/lib/tiposPedido";
+import { tipoMeta, tipoFiltroPedido } from "@/lib/tiposPedido";
 import { esItemPromoJarros } from "@/lib/pedidoImpresion";
 import { exportarContadorExcel } from "@/lib/exportContadorExcel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DesglosePagoPedido } from "@/components/contador/DesglosePagoPedido";
+import { desglosePagoPedido } from "@/components/contador/agrupacionPagos";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -144,6 +146,7 @@ interface TurnoResumenQueryRow {
 }
 
 interface PagoTurno {
+  pedido_id?: string | null;
   id: string;
   turno_id: string;
   metodo: string;
@@ -168,6 +171,7 @@ interface PedidoItemDetalle {
 
 interface PedidoRow {
   id: string;
+  despachador_id: string | null;
   numero_pedido: number | null;
   cliente_nombre: string;
   cliente_telefono: string | null;
@@ -298,6 +302,7 @@ export default function ContadorPage() {
   const [turnoDetalle, setTurnoDetalle] = useState<TurnoResumen | null>(null);
   const [detalle, setDetalle] = useState<DetalleData | null>(null);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
+  const [errorDetalle, setErrorDetalle] = useState<string | null>(null);
   const [filtroCuadratura, setFiltroCuadratura] = useState<EstadoCuadratura | "todos">("todos");
   const [guardandoCuadratura, setGuardandoCuadratura] = useState(false);
   const [comentarioDraft, setComentarioDraft] = useState("");
@@ -312,7 +317,11 @@ export default function ContadorPage() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from("sucursales").select("id, nombre").order("nombre");
+      const { data, error } = await supabase.from("sucursales").select("id, nombre").order("nombre");
+      if (error) {
+        toast.error("No se pudieron cargar las sucursales: " + error.message);
+        return;
+      }
       setExportSucursales((data as Array<{ id: string; nombre: string }>) ?? []);
     })();
   }, []);
@@ -361,6 +370,7 @@ export default function ContadorPage() {
   useEffect(() => {
     setLoadingMes(true);
     setDiaSeleccionado(null);
+    setTurnos([]);
     setPagosPorTurno({});
     const y = mes.getFullYear();
     const m = mes.getMonth();
@@ -376,7 +386,12 @@ export default function ContadorPage() {
       .gte("fecha_dlitro", inicio)
       .lte("fecha_dlitro", fin)
       .order("fecha_dlitro")
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) {
+          toast.error("No se pudieron cargar los cierres: " + error.message);
+          setLoadingMes(false);
+          return;
+        }
         const rows = (data ?? []) as unknown as TurnoResumenQueryRow[];
         const lista: TurnoResumen[] = rows.map((t) => ({
           id: t.id,
@@ -425,10 +440,17 @@ export default function ContadorPage() {
     setLoadingDia(true);
     const ids = turnos.filter((t) => t.fecha_dlitro === fecha).map((t) => t.id);
     if (ids.length) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("pagos_turno")
         .select("id,turno_id,metodo,monto")
         .in("turno_id", ids);
+      if (error) {
+        toast.error("No se pudo cargar el resumen del día: " + error.message);
+        setDiaSeleccionado(null);
+        setPagosPorTurno({});
+        setLoadingDia(false);
+        return;
+      }
       const map: Record<string, PagoTurno[]> = {};
       ((data as PagoTurno[]) ?? []).forEach((p) => {
         if (!map[p.turno_id]) map[p.turno_id] = [];
@@ -445,13 +467,15 @@ export default function ContadorPage() {
     setTurnoDetalle(turno);
     setComentarioDraft(turno.comentario_contador ?? "");
     setDetalle(null);
+    setErrorDetalle(null);
     setLoadingDetalle(true);
 
-    const [pgR, gtR, pedR, dpR] = await Promise.all([
-      supabase.from("pagos_turno").select("id,turno_id,metodo,monto").eq("turno_id", turno.id),
+    const [pgR, gtR, pedR, dpR, nombresR] = await Promise.all([
+      supabase.from("pagos_turno").select("id,turno_id,pedido_id,metodo,monto").eq("turno_id", turno.id),
       supabase.from("gastos_turno").select("id,concepto,monto,metodo").eq("turno_id", turno.id).order("created_at"),
       supabase.from("pedidos").select(`
         id,
+        despachador_id,
         numero_pedido,
         cliente_nombre,
         cliente_telefono,
@@ -485,9 +509,20 @@ export default function ContadorPage() {
       supabase.from("pago_despachadores")
         .select("id,despachador_id,pedidos_entregados,horas_trabajadas,base_por_horas,bono,total_a_pagar,usuarios(nombre_completo,nombre,apellido)")
         .eq("turno_id", turno.id),
+      supabase.rpc("nombres_despachadores_contabilidad", { p_turno: turno.id }),
     ]);
 
-    const despachadorRows = (dpR.data ?? []) as unknown as PagoDespQueryRow[];
+    const errorConsulta = pgR.error ?? gtR.error ?? pedR.error ?? dpR.error ?? nombresR.error;
+    if (errorConsulta) {
+      setErrorDetalle("No se pudo cargar el resumen completo. " + errorConsulta.message);
+      setLoadingDetalle(false);
+      return;
+    }
+
+    const nombres = new Map((nombresR.data ?? []).map((u) => [u.id, u]));
+    const despachadorRows = ((dpR.data ?? []) as unknown as PagoDespQueryRow[]).map((d) => ({
+      ...d, usuarios: nombres.get(d.despachador_id) ?? d.usuarios,
+    }));
     const desps: PagoDesp[] = despachadorRows.map((d) => ({
       id: d.id,
       despachador_nombre:
@@ -506,7 +541,9 @@ export default function ContadorPage() {
       gastos: (gtR.data as GastoTurno[]) ?? [],
       // Supabase no puede inferir con precisión este alias relacional; el
       // contrato se valida en el límite de la consulta y se consume tipado aquí.
-      pedidos: (pedR.data as unknown as PedidoRow[]) ?? [],
+      pedidos: ((pedR.data ?? []) as unknown as PedidoRow[]).map((p) => ({
+        ...p, usuarios: (p.despachador_id ? nombres.get(p.despachador_id) : null) ?? p.usuarios,
+      })),
       despachadores: desps,
     });
     setLoadingDetalle(false);
@@ -626,7 +663,7 @@ export default function ContadorPage() {
               </Select>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              Genera hojas «Resumen Diario» y «Comunas» con el formato contable dlitro.
+              Genera «Resumen Diario», «Comunas» y «Criterios». La columna PEDIDOS cuenta solo entregados, incluyendo Uber y Rappi; pendientes y cancelados se muestran por separado.
             </p>
           </div>
           <DialogFooter>
@@ -807,16 +844,17 @@ export default function ContadorPage() {
 
       {/* ── Dialog detalle ────────────────────────────────────────────────── */}
       <Dialog open={!!turnoDetalle} onOpenChange={(v) => !v && setTurnoDetalle(null)}>
-        <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0 gap-0 bg-background">
-          <DialogHeader className="px-6 pt-5 pb-4 border-b border-border shrink-0">
-            <div className="flex items-start justify-between gap-4">
+        <DialogContent className="w-[calc(100%-1rem)] max-w-6xl h-[92dvh] flex flex-col overflow-hidden p-0 gap-0 bg-background rounded-2xl">
+          <DialogHeader className="px-4 sm:px-6 pt-5 pb-4 pr-10 border-b border-border shrink-0 bg-card">
+            <div className="flex flex-wrap items-start justify-between gap-4 text-left">
               <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Detalle de caja</p>
                 <DialogTitle className="font-display text-2xl tracking-wide">
                   {turnoDetalle?.sucursal_nombre}
                   {!!turnoDetalle?.comentario_contador?.trim() && (
                     <span className="ml-2 text-base" title="Tiene nota del contador">📝</span>
                   )}
-                  <span className="ml-3 text-base font-normal text-muted-foreground capitalize">
+                  <span className="block mt-1 text-sm font-normal text-muted-foreground capitalize">
                     {turnoDetalle?.fecha_dlitro ? fechaDisplay(turnoDetalle.fecha_dlitro) : ""}
                   </span>
                 </DialogTitle>
@@ -875,10 +913,17 @@ export default function ContadorPage() {
               <Loader2 className="h-5 w-5 animate-spin" />
               <span className="text-sm">Cargando detalle…</span>
             </div>
+          ) : errorDetalle ? (
+            <div role="alert" className="px-6 py-8 space-y-4">
+              <p className="text-sm text-destructive">{errorDetalle}</p>
+              <Button variant="outline" onClick={() => turnoDetalle && abrirDetalle(turnoDetalle)}>
+                Reintentar
+              </Button>
+            </div>
           ) : detalle && turnoDetalle ? (
             <div className="flex-1 flex flex-col overflow-hidden min-h-0">
               <Tabs defaultValue="caja" className="flex-1 flex flex-col overflow-hidden min-h-0">
-                <TabsList className="mx-6 mt-4 shrink-0 w-fit">
+                <TabsList className="mx-4 sm:mx-6 mt-4 shrink-0 w-fit max-w-[calc(100%-2rem)] h-auto flex-wrap gap-1 p-1.5 rounded-xl">
                   <TabsTrigger value="caja">Resumen de caja</TabsTrigger>
                   <TabsTrigger value="pedidos">
                     Pedidos{" "}
@@ -894,21 +939,20 @@ export default function ContadorPage() {
                   </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="caja" className="flex-1 overflow-y-auto px-6 pb-4 mt-4">
+                <TabsContent value="caja" className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 pb-6 mt-4">
                   <ResumenCaja turno={turnoDetalle} pagos={detalle.pagos} gastos={detalle.gastos} despachadores={detalle.despachadores} />
                 </TabsContent>
-                <TabsContent value="pedidos" className="flex-1 overflow-y-auto px-6 pb-4 mt-4">
+                <TabsContent value="pedidos" className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 pb-6 mt-4">
                   <DetallePedidos pedidos={detalle.pedidos} pagos={detalle.pagos} />
                 </TabsContent>
-                <TabsContent value="despachadores" className="flex-1 overflow-y-auto px-6 pb-4 mt-4">
+                <TabsContent value="despachadores" className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 pb-6 mt-4">
                   <PagoDespachadores despachadores={detalle.despachadores} />
                 </TabsContent>
               </Tabs>
 
-              <div className="shrink-0 border-t border-border px-6 py-4 bg-card/50 space-y-3">
-                <h3 className="text-xs uppercase font-semibold tracking-wider text-muted-foreground">
-                  📝 Notas del contador
-                </h3>
+              <details className="shrink-0 border-t border-border px-4 sm:px-6 py-3 bg-card/50 overflow-y-auto max-h-[35dvh]">
+                <summary className="cursor-pointer text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">Notas del contador{turnoDetalle.comentario_contador?.trim() ? " · Hay una nota guardada" : ""}</summary>
+                <div className="space-y-3 pt-3">
                 <Textarea
                   value={comentarioDraft}
                   onChange={(e) => setComentarioDraft(e.target.value)}
@@ -943,7 +987,8 @@ export default function ContadorPage() {
                 ) : (
                   <p className="text-[11px] text-muted-foreground">Solo lectura — editable por contador o superadmin.</p>
                 )}
-              </div>
+                </div>
+              </details>
             </div>
           ) : null}
         </DialogContent>
@@ -1149,6 +1194,23 @@ function ResumenCaja({
 
   return (
     <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="rounded-xl border border-success/20 bg-success/5 p-5">
+          <p className="text-sm text-muted-foreground">Ingresos registrados</p>
+          <p className="mt-2 text-2xl font-semibold font-mono tabular-nums text-success">{fmtCLP(totalIngresos)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">Todos los métodos de pago</p>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-5">
+          <p className="text-sm text-muted-foreground">Gastos registrados</p>
+          <p className="mt-2 text-2xl font-semibold font-mono tabular-nums">{fmtCLP(totalGastos)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{gastos.length} {gastos.length === 1 ? "movimiento" : "movimientos"} del turno</p>
+        </div>
+        <div className={cn("rounded-xl border p-5", diferenciaTotal === null ? "border-border bg-card" : hayDescuadre ? "border-destructive/30 bg-destructive/5" : "border-success/20 bg-success/5")}>
+          <p className="text-sm text-muted-foreground">Diferencia de efectivo</p>
+          <p className="mt-2 text-2xl font-semibold font-mono tabular-nums">{diferenciaTotal === null ? "—" : fmtCLP(diferenciaTotal)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{diferenciaTotal === null ? "Sin cierre registrado" : hayDescuadre ? "Requiere revisión" : "Dentro del margen de cuadratura"}</p>
+        </div>
+      </div>
       {/* Ingresos por método */}
       <div>
         <h3 className="text-xs uppercase font-semibold tracking-wider text-muted-foreground mb-3">
@@ -1248,7 +1310,7 @@ function ResumenCaja({
         {/* Cuadre de caja — desglose caja chica / sobre */}
         <div className={cn(
           "rounded-xl border p-5",
-          !hayDescuadre ? "border-success/30 bg-success/5" : "border-destructive/30 bg-destructive/5"
+          diferenciaTotal === null ? "border-border bg-card" : !hayDescuadre ? "border-success/30 bg-success/5" : "border-destructive/30 bg-destructive/5"
         )}>
           <p className="text-xs uppercase tracking-wider text-muted-foreground mb-4 font-semibold">
             Cuadre de efectivo — caja chica y sobre
@@ -1341,7 +1403,7 @@ function DetallePedidos({ pedidos, pagos }: { pedidos: PedidoRow[]; pagos: PagoT
   const [expandido, setExpandido] = useState<string | null>(null);
 
   const estados = useMemo(() => ["todos", ...new Set(pedidos.map((p) => p.estado))], [pedidos]);
-  const tipos = useMemo(() => ["todos", ...new Set(pedidos.map((p) => p.tipo))], [pedidos]);
+  const tipos = useMemo(() => ["todos", ...new Set(pedidos.map((p) => tipoFiltroPedido(p.tipo)))], [pedidos]);
   const metodos = useMemo(
     () => ["todos", ...new Set(pedidos.map((p) => p.metodo_pago).filter(Boolean) as string[])],
     [pedidos],
@@ -1352,7 +1414,7 @@ function DetallePedidos({ pedidos, pagos }: { pedidos: PedidoRow[]; pagos: PagoT
       pedidos.filter(
         (p) =>
           (filtroEstado === "todos" || p.estado === filtroEstado) &&
-          (filtroTipo === "todos" || p.tipo === filtroTipo) &&
+          (filtroTipo === "todos" || tipoFiltroPedido(p.tipo) === filtroTipo) &&
           (filtroMetodo === "todos" || p.metodo_pago === filtroMetodo),
       ),
     [pedidos, filtroEstado, filtroTipo, filtroMetodo],
@@ -1385,12 +1447,13 @@ function DetallePedidos({ pedidos, pagos }: { pedidos: PedidoRow[]; pagos: PagoT
 
   const exportarCsv = () => {
     const headers = [
-      "#", "Cliente", "Teléfono", "Tipo", "Despachador", "Estado", "Método Pago",
+      "#", "Cliente", "Teléfono", "Tipo", "Despachador", "Estado", "Método Pago", "Pago efectivo", "Pago transferencia", "Pago tarjeta",
       "Subtotal", "Descuento", "Costo Despacho", "Total", "Monto Recibido", "Vuelto",
       "Pagado", "Origen", "Hora", "Dirección", "Referencia", "Notas", "Jarros", "Productos",
     ];
     const rows = filtrados.map((p) => {
       const vuelto = vueltoPedido(p);
+      const pagosPedido = desglosePagoPedido(pagos, p.id);
       const items = (p.pedido_items ?? []).map(labelItemPedido).join(" | ");
       return [
         p.numero_pedido ?? "",
@@ -1400,6 +1463,9 @@ function DetallePedidos({ pedidos, pagos }: { pedidos: PedidoRow[]; pagos: PagoT
         nombreDespachador(p),
         ESTADO_PEDIDO_LABEL[p.estado] ?? p.estado,
         p.metodo_pago ? (METODO_LABEL[p.metodo_pago] ?? p.metodo_pago) : "",
+        pagosPedido?.efectivo ?? "",
+        pagosPedido?.transferencia ?? "",
+        pagosPedido?.tarjeta ?? "",
         p.subtotal ?? 0,
         p.descuento ?? 0,
         p.costo_despacho ?? 0,
@@ -1427,7 +1493,7 @@ function DetallePedidos({ pedidos, pagos }: { pedidos: PedidoRow[]; pagos: PagoT
     toast.success("Exportado — abrilo en Excel");
   };
 
-  const colSpan = 17;
+  const colSpan = 7;
 
   return (
     <div className="space-y-4">
@@ -1490,156 +1556,55 @@ function DetallePedidos({ pedidos, pagos }: { pedidos: PedidoRow[]; pagos: PagoT
         </Button>
       </div>
 
-      <div className="border border-border rounded-lg overflow-x-auto">
-        <table className="w-full text-sm min-w-[1400px]">
-          <thead className="bg-secondary/40 border-b border-border">
-            <tr className="text-left text-muted-foreground uppercase text-[10px] tracking-wider">
-              <th className="px-2 py-2.5 w-8" />
-              <th className="px-2 py-2.5">#</th>
-              <th className="px-2 py-2.5">Cliente</th>
-              <th className="px-2 py-2.5">Teléfono</th>
-              <th className="px-2 py-2.5">Tipo</th>
-              <th className="px-2 py-2.5">Despachador</th>
-              <th className="px-2 py-2.5">Estado</th>
-              <th className="px-2 py-2.5">Método Pago</th>
-              <th className="px-2 py-2.5 text-right">Subtotal</th>
-              <th className="px-2 py-2.5 text-right">Descuento</th>
-              <th className="px-2 py-2.5 text-right">Costo Despacho</th>
-              <th className="px-2 py-2.5 text-right">Total</th>
-              <th className="px-2 py-2.5 text-right">Monto Recibido</th>
-              <th className="px-2 py-2.5 text-right">Vuelto</th>
-              <th className="px-2 py-2.5">Pagado</th>
-              <th className="px-2 py-2.5">Origen</th>
-              <th className="px-2 py-2.5">Hora</th>
+      <div className="rounded-xl border border-border bg-card overflow-x-auto">
+        <table className="w-full text-sm min-w-[850px]">
+          <thead className="bg-muted/40 border-b border-border">
+            <tr className="text-left text-muted-foreground text-xs">
+              <th className="p-3 w-10"><span className="sr-only">Detalle</span></th>
+              <th className="p-3">Pedido / Cliente</th>
+              <th className="p-3">Estado</th>
+              <th className="p-3">Despachador</th>
+              <th className="p-3 min-w-56">Pago y desglose</th>
+              <th className="p-3 text-right">Total pedido</th>
+              <th className="p-3">Registro</th>
             </tr>
           </thead>
           <tbody>
-            {filtrados.length === 0 ? (
-              <tr>
-                <td colSpan={colSpan} className="px-4 py-8 text-center text-muted-foreground text-sm">
-                  Sin pedidos con los filtros seleccionados.
-                </td>
-              </tr>
-            ) : (
-              filtrados.map((p) => {
+            {filtrados.length === 0 ? <tr><td colSpan={colSpan} className="p-10 text-center text-muted-foreground">Sin pedidos con los filtros seleccionados.</td></tr>
+              : filtrados.map((p) => {
                 const abierto = expandido === p.id;
                 const vuelto = vueltoPedido(p);
-                return (
-                  <Fragment key={p.id}>
-                    <tr
-                      className="border-t border-border hover:bg-secondary/20 cursor-pointer"
-                      onClick={() => setExpandido(abierto ? null : p.id)}
-                    >
-                      <td className="px-2 py-2 text-muted-foreground">
-                        <ChevronDown className={cn("h-4 w-4 transition-transform", abierto && "rotate-180")} />
-                      </td>
-                      <td className="px-2 py-2 font-mono text-muted-foreground">#{p.numero_pedido ?? "—"}</td>
-                      <td className="px-2 py-2 font-medium whitespace-nowrap">{p.cliente_nombre}</td>
-                      <td className="px-2 py-2 font-mono text-xs whitespace-nowrap">{p.cliente_telefono || "—"}</td>
-                      <td className="px-2 py-2 whitespace-nowrap">{tipoMeta(p.tipo).label}</td>
-                      <td className="px-2 py-2 whitespace-nowrap text-muted-foreground">{nombreDespachador(p)}</td>
-                      <td className="px-2 py-2">
-                        <span className={cn(
-                          "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded",
-                          p.estado === "entregado" ? "bg-success/10 text-success" :
-                          p.estado === "cancelado" ? "bg-destructive/10 text-destructive" :
-                          "bg-muted text-muted-foreground",
-                        )}>
-                          {ESTADO_PEDIDO_LABEL[p.estado] ?? p.estado}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2">
-                        {p.metodo_pago ? (
-                          <span className={cn(
-                            "text-[10px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wider",
-                            METODO_BADGE[p.metodo_pago] ?? "bg-muted text-foreground border-border",
-                          )}>
-                            {METODO_LABEL[p.metodo_pago] ?? p.metodo_pago}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono whitespace-nowrap">{fmtCLP(p.subtotal ?? 0)}</td>
-                      <td className="px-2 py-2 text-right font-mono whitespace-nowrap text-muted-foreground">
-                        {(p.descuento ?? 0) > 0 ? `-${fmtCLP(p.descuento ?? 0)}` : "—"}
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono whitespace-nowrap">
-                        {(p.costo_despacho ?? 0) > 0 ? fmtCLP(p.costo_despacho ?? 0) : "—"}
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono font-semibold whitespace-nowrap">{fmtCLP(p.total)}</td>
-                      <td className="px-2 py-2 text-right font-mono whitespace-nowrap">
-                        {p.monto_recibido != null ? fmtCLP(p.monto_recibido) : "—"}
-                      </td>
-                      <td className="px-2 py-2 text-right font-mono whitespace-nowrap">
-                        {vuelto != null ? fmtCLP(vuelto) : "—"}
-                      </td>
-                      <td className="px-2 py-2">
-                        {p.pago_registrado ? (
-                          <span className="text-[10px] font-bold uppercase text-success">Sí</span>
-                        ) : (
-                          <span className="text-[10px] font-bold uppercase text-muted-foreground">No</span>
-                        )}
-                      </td>
-                      <td className="px-2 py-2 text-xs capitalize whitespace-nowrap">{p.origen || "—"}</td>
-                      <td className="px-2 py-2 font-mono text-xs whitespace-nowrap">{fmtHoraPedido(p)}</td>
-                    </tr>
-                    {abierto && (
-                      <tr className="border-t border-border bg-secondary/15">
-                        <td colSpan={colSpan} className="px-6 py-4">
-                          <div className="grid gap-3 text-sm max-w-3xl">
-                            <div>
-                              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1.5">Productos</p>
-                              <ul className="space-y-1">
-                                {(p.pedido_items ?? []).length === 0 ? (
-                                  <li className="text-muted-foreground">Sin ítems</li>
-                                ) : (
-                                  (p.pedido_items ?? []).map((it, idx) => (
-                                    <li key={idx} className="font-mono text-xs">
-                                      - {labelItemPedido(it)}
-                                      {it.notas?.trim() && !esItemPromoJarros(it) ? (
-                                        <span className="text-muted-foreground"> · {it.notas}</span>
-                                      ) : null}
-                                    </li>
-                                  ))
-                                )}
-                              </ul>
-                            </div>
-                            {(p.direccion_entrega || p.referencia_entrega || p.notas || (p.jarros_entregados ?? 0) > 0) && (
-                              <div className="space-y-1 text-xs border-t border-border pt-3">
-                                {p.direccion_entrega && (
-                                  <p><span className="text-muted-foreground">Dirección:</span> {p.direccion_entrega}</p>
-                                )}
-                                {p.referencia_entrega && (
-                                  <p><span className="text-muted-foreground">Referencia:</span> {p.referencia_entrega}</p>
-                                )}
-                                {p.notas && (
-                                  <p><span className="text-muted-foreground">Notas:</span> {p.notas}</p>
-                                )}
-                                {(p.jarros_entregados ?? 0) > 0 && (
-                                  <p><span className="text-muted-foreground">Jarros entregados:</span> {p.jarros_entregados}</p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })
-            )}
+                return <Fragment key={p.id}>
+                  <tr className={cn("border-t border-border align-top hover:bg-muted/20", abierto && "bg-primary/5")}>
+                    <td className="p-3"><button type="button" aria-label={`Ver detalle del pedido ${p.numero_pedido ?? 'sin número'}`} aria-expanded={abierto} aria-controls={`pedido-detalle-${p.id}`} className="rounded-md p-1 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setExpandido(abierto ? null : p.id)}><ChevronDown className={cn("h-4 w-4 transition-transform", abierto && "rotate-180")} /></button></td>
+                    <td className="p-3"><p className="font-semibold">#{p.numero_pedido ?? '—'} · {p.cliente_nombre}</p><p className="mt-1 text-xs text-muted-foreground">{tipoMeta(p.tipo).label} · {p.cliente_telefono || 'Sin teléfono'}</p></td>
+                    <td className="p-3"><Badge variant="outline" className={cn(p.estado === 'entregado' ? 'border-success/30 bg-success/10 text-success' : p.estado === 'cancelado' ? 'border-destructive/30 bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground')}>{ESTADO_PEDIDO_LABEL[p.estado] ?? p.estado}</Badge></td>
+                    <td className="p-3 text-muted-foreground">{nombreDespachador(p)}</td>
+                    <td className="p-3"><Badge variant="outline" className={METODO_BADGE[p.metodo_pago ?? ''] ?? ''}>{METODO_LABEL[p.metodo_pago ?? ''] ?? p.metodo_pago ?? 'Sin método'}</Badge><DesglosePagoPedido pagos={pagos} pedidoId={p.id} total={p.total} metodo={p.metodo_pago} /><p className="mt-2 text-[11px] text-muted-foreground">{p.pago_registrado ? 'Pago registrado' : 'Sin confirmación de pago'}</p></td>
+                    <td className="p-3 text-right font-mono font-semibold tabular-nums whitespace-nowrap">{fmtCLP(p.total)}</td>
+                    <td className="p-3"><p className="font-mono text-xs">{fmtHoraPedido(p)}</p><p className="mt-1 text-xs text-muted-foreground capitalize">{p.origen || 'Sin origen'}</p></td>
+                  </tr>
+                  {abierto && <tr id={`pedido-detalle-${p.id}`} className="border-t bg-muted/10"><td colSpan={colSpan} className="p-4 sm:p-5">
+                    <div className="grid md:grid-cols-2 gap-5">
+                      <section className="rounded-lg border bg-background/60 p-4"><h3 className="font-semibold mb-3">Productos</h3><ul className="space-y-2 text-xs">{(p.pedido_items ?? []).length === 0 ? <li className="text-muted-foreground">Sin ítems registrados</li> : (p.pedido_items ?? []).map((it, index) => <li key={index}>{labelItemPedido(it)}{it.notas?.trim() && !esItemPromoJarros(it) && <span className="text-muted-foreground"> · {it.notas}</span>}</li>)}</ul></section>
+                      <section className="rounded-lg border bg-background/60 p-4"><h3 className="font-semibold mb-3">Importes del pedido</h3><dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">{[
+                        ['Subtotal', fmtCLP(p.subtotal ?? 0)], ['Descuento', fmtCLP(p.descuento ?? 0)], ['Costo de despacho', fmtCLP(p.costo_despacho ?? 0)], ['Total', fmtCLP(p.total)], ['Monto recibido', p.monto_recibido == null ? 'Sin dato' : fmtCLP(p.monto_recibido)], ['Vuelto', vuelto == null ? 'Sin dato' : fmtCLP(vuelto)],
+                      ].map(([label,value]) => <Fragment key={label}><dt className="text-muted-foreground">{label}</dt><dd className="font-mono text-right">{value}</dd></Fragment>)}</dl></section>
+                      {(p.direccion_entrega || p.referencia_entrega || p.notas || p.jarros_entregados != null) && <section className="md:col-span-2 text-xs space-y-2 break-words">{p.direccion_entrega && <p><span className="text-muted-foreground">Dirección: </span>{p.direccion_entrega}</p>}{p.referencia_entrega && <p><span className="text-muted-foreground">Referencia: </span>{p.referencia_entrega}</p>}{p.notas && <p><span className="text-muted-foreground">Notas: </span>{p.notas}</p>}{p.jarros_entregados != null && <p><span className="text-muted-foreground">Jarros informados: </span>{p.jarros_entregados}</p>}</section>}
+                    </div>
+                  </td></tr>}
+                </Fragment>;
+              })}
           </tbody>
         </table>
       </div>
-
       {filtrados.length > 0 && (
         <div className="rounded-lg border border-border bg-secondary/20 px-4 py-3 font-mono text-xs space-y-1">
           <p>
             Total pedidos: {filtrados.length} | Entregados: {resumen.entregados} | Cancelados: {resumen.cancelados} | Pendientes: {resumen.pendientes}
           </p>
           <div className="pt-1 border-t border-border space-y-1">
-            <p className="font-bold text-sm">Total ingresos: {fmtCLP(ingresos.total)}</p>
+            <p className="font-bold text-sm">Ingresos del turno (todos los pedidos): {fmtCLP(ingresos.total)}</p>
             <p className="pl-2 text-muted-foreground">Efectivo: {fmtCLP(ingresos.efectivo)}</p>
             <p className="pl-2 text-muted-foreground">Transferencia: {fmtCLP(ingresos.transferencia)}</p>
             <p className="pl-2 text-muted-foreground">Tarjeta: {fmtCLP(ingresos.tarjeta)}</p>

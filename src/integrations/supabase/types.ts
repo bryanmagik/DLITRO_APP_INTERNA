@@ -2156,6 +2156,37 @@ export type Database = {
       }
     }
     Functions: {
+      sucursales_mapa_despachos: {
+        Args: Record<PropertyKey, never>
+        Returns: { id: string; nombre: string; direccion: string | null; latitud: number; longitud: number }[]
+      }
+      nombres_despachadores_contabilidad: {
+        Args: { p_turno: string }
+        Returns: { id: string; nombre: string | null; apellido: string | null; nombre_completo: string | null }[]
+      }
+      resumen_auditoria_pedidos: { Args: { p_desde: string; p_hasta: string; p_sucursal?: string | null }; Returns: Json }
+      puede_ver_auditoria_pedidos: { Args: Record<PropertyKey, never>; Returns: boolean }
+      opciones_auditoria_pedidos: { Args: Record<PropertyKey, never>; Returns: Json }
+      historial_completo_pedido_auditoria: {
+        Args: { p_pedido: string }
+        Returns: Json
+      }
+      listar_pedidos_auditoria: {
+        Args: {
+          p_sucursal?: string | null; p_actor?: string | null; p_turno?: string | null
+          p_numero?: number | null; p_evento?: string | null; p_desde?: string | null
+          p_hasta?: string | null; p_pagina?: number
+        }
+        Returns: Json
+      }
+      consultar_auditoria_pedidos: {
+        Args: {
+          p_sucursal?: string | null; p_actor?: string | null; p_turno?: string | null
+          p_numero?: number | null; p_evento?: string | null; p_desde?: string | null
+          p_hasta?: string | null; p_pagina?: number; p_pedido?: string | null
+        }
+        Returns: Json
+      }
       ajustar_costo_despacho_activo: {
         Args: {
           p_costo_cobrado: number
@@ -2229,6 +2260,7 @@ export type Database = {
         | "cortesia"
       rol_usuario:
         | "superadmin"
+        | "dueno_dlitro"
         | "admin"
         | "encargado"
         | "tomador_pedidos"
@@ -2397,6 +2429,7 @@ export const Constants = {
       ],
       rol_usuario: [
         "superadmin",
+        "dueno_dlitro",
         "admin",
         "encargado",
         "tomador_pedidos",

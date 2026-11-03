@@ -81,8 +81,6 @@ const App = () => (
               }
             >
               <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
-              <Route path="/admin/auditoria-despachos" element={<AuditoriaDespachosPage />} />
-              <Route path="/admin/auditoria" element={<AuditoriaDespachosPage />} />
               <Route path="/admin/turnos" element={<TurnosAdminPage />} />
               <Route path="/admin/sucursales" element={<SucursalesPage />} />
               <Route path="/admin/pedidos" element={<PedidosAdminPage />} />
@@ -95,6 +93,12 @@ const App = () => (
               <Route path="/admin/base-despachadores" element={<BaseDespachadoresPage />} />
               <Route path="/admin/tarifas-despacho" element={<TarifasDespachoPage />} />
               <Route path="/admin/configuracion" element={<PagePlaceholder title="Configuración" />} />
+            </Route>
+
+            <Route element={<ProtectedRoute roles={["superadmin", "dueno_dlitro", "contador_rrhh"]}><AppLayout /></ProtectedRoute>}>
+              <Route path="/auditoria" element={<AuditoriaDespachosPage />} />
+              <Route path="/admin/auditoria" element={<AuditoriaDespachosPage />} />
+              <Route path="/admin/auditoria-despachos" element={<AuditoriaDespachosPage />} />
             </Route>
 
             {/* Encargado */}

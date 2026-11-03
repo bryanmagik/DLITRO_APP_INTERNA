@@ -52,6 +52,7 @@ import { Badge } from "@/components/ui/badge";
 type Item = { title: string; url: string; icon: typeof LayoutDashboard };
 
 const menuPorRol: Record<Rol, Item[]> = {
+  dueno_dlitro: [{ title: "Panel de Auditoría", url: "/auditoria", icon: History }],
   superadmin: [
     { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
     { title: "Cierre de Turnos", url: "/admin/turnos", icon: Clock3 },
@@ -72,7 +73,6 @@ const menuPorRol: Record<Rol, Item[]> = {
   admin: [
     { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
     { title: "Cierre de Turnos", url: "/admin/turnos", icon: Clock3 },
-    { title: "Panel de Auditoría", url: "/admin/auditoria", icon: History },
     { title: "Sucursales", url: "/admin/sucursales", icon: Store },
     { title: "Pedidos", url: "/admin/pedidos", icon: ClipboardList },
     { title: "Productos", url: "/admin/productos", icon: ShoppingBag },
@@ -128,6 +128,7 @@ const menuPorRol: Record<Rol, Item[]> = {
   ],
   contador_rrhh: [
     { title: "Caja por Día", url: "/contador", icon: Calculator },
+    { title: "Panel de Auditoría", url: "/auditoria", icon: History },
     { title: "Descuadres", url: "/contador/descuadres", icon: BarChart3 },
     { title: "Asistencia", url: "/contador/asistencia", icon: Users },
   ],

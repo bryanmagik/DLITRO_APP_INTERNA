@@ -8,8 +8,8 @@ export const TIPO_META: Record<TipoPedido, {
   pillCls: string; badgeCls: string;
   esExterno: boolean; conDireccion: boolean; conPago: boolean;
 }> = {
-  local:    { label: "Local",    short: "LOC", icon: Store, pillCls: "bg-blue-500 text-white",   badgeCls: "bg-blue-500/15 text-blue-400 border-blue-500/40",   esExterno: false, conDireccion: false, conPago: true },
-  retiro:   { label: "Local",    short: "LOC", icon: Store, pillCls: "bg-blue-500 text-white",   badgeCls: "bg-blue-500/15 text-blue-400 border-blue-500/40",   esExterno: false, conDireccion: false, conPago: true },
+  local:    { label: "Retiro",   short: "RET", icon: Store, pillCls: "bg-blue-500 text-white",   badgeCls: "bg-blue-500/15 text-blue-400 border-blue-500/40",   esExterno: false, conDireccion: false, conPago: true },
+  retiro:   { label: "Retiro",   short: "RET", icon: Store, pillCls: "bg-blue-500 text-white",   badgeCls: "bg-blue-500/15 text-blue-400 border-blue-500/40",   esExterno: false, conDireccion: false, conPago: true },
   delivery: { label: "Delivery", short: "DEL", icon: Truck, pillCls: "bg-success text-white",    badgeCls: "bg-success/15 text-success border-success/40",      esExterno: false, conDireccion: true,  conPago: true },
   despacho: { label: "Delivery", short: "DEL", icon: Truck, pillCls: "bg-success text-white",    badgeCls: "bg-success/15 text-success border-success/40",      esExterno: false, conDireccion: true,  conPago: true },
   uber:     { label: "Uber",     short: "UBR", icon: Car,   pillCls: "bg-zinc-900 text-white border border-white/20", badgeCls: "bg-zinc-900 text-white border-white/20",    esExterno: true,  conDireccion: false, conPago: false },
@@ -18,3 +18,6 @@ export const TIPO_META: Record<TipoPedido, {
 };
 
 export const tipoMeta = (t: string | null | undefined) => TIPO_META[(t as TipoPedido) ?? "local"] ?? TIPO_META.local;
+
+/** Agrupa nombres históricos para que los filtros no separen la misma modalidad. */
+export const tipoFiltroPedido = (tipo: string) => tipo === "local" ? "retiro" : tipo === "delivery" ? "despacho" : tipo;

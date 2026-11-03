@@ -41,6 +41,7 @@ interface Sucursal {
 
 const ROLES: { value: Rol; label: string }[] = [
   { value: "superadmin", label: "Superadmin" },
+  { value: "dueno_dlitro", label: "Dueño DLITRO (consulta de auditoría)" },
   { value: "admin", label: "Admin" },
   { value: "encargado", label: "Encargado" },
   { value: "tomador_pedidos", label: "Tomador de pedidos" },
@@ -200,7 +201,7 @@ export default function UsuariosPage() {
 
   const rolesDisponibles = perfil?.rol === "encargado"
     ? ROLES.filter((r) => ROLES_OPERACIONALES.includes(r.value))
-    : ROLES;
+    : ROLES.filter((r) => perfil?.rol === "superadmin" || !["superadmin", "dueno_dlitro"].includes(r.value));
 
   return (
     <div className="space-y-6">

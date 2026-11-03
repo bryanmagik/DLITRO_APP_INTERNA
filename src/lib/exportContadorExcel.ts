@@ -1,4 +1,4 @@
-import writeXlsxFile from "write-excel-file/browser";
+import writeXlsxFile, { type SheetData } from "write-excel-file/browser";
 import { supabase } from "@/integrations/supabase/client";
 
 export const COMUNAS_SANTIAGO = [
@@ -71,6 +71,8 @@ const HEADERS_RESUMEN = [
   "JARROS CANCELADOS",
   "RAPPI",
   "EFECTIVO TOTAL CAJA",
+  "PEDIDOS PENDIENTES",
+  "PUERTA",
 ] as const;
 
 const DIAS_ES = ["DOMINGO", "LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO"];
@@ -180,6 +182,17 @@ function n(v: number | null | undefined): number {
   return Number.isFinite(Number(v)) ? Number(v) : 0;
 }
 
+function tablaExcel(headers: readonly string[], rows: (string | number)[][]): SheetData {
+  return [
+    headers.map((value) => ({ value, fontWeight: "bold", color: "#FFFFFF", backgroundColor: "#166534", wrap: true })),
+    ...rows.map((row, index) => row.map((value) => ({
+      value,
+      backgroundColor: index % 2 === 0 ? "#F0FDF4" : "#FFFFFF",
+      ...(typeof value === "number" ? { format: "#,##0" } : {}),
+    }))),
+  ];
+}
+
 type TurnoExp = {
   id: string;
   sucursal_id: string;
@@ -218,17 +231,22 @@ export type ExportContadorParams = {
 export async function exportarContadorExcel(params: ExportContadorParams): Promise<void> {
   const { fechaInicio, fechaFin, sucursalId, sucursalNombreArchivo } = params;
 
-  let turnosQ = supabase
+  const turnosRaw = await fetchAllPages<{
+    id: string; sucursal_id: string; fecha_dlitro: string; tomador_id: string;
+    sucursales: { nombre: string } | null;
+  }>("turnos", (from, to) => {
+    let turnosQ = supabase
     .from("turnos")
     .select("id, sucursal_id, fecha_dlitro, tomador_id, sucursales(nombre)")
     .gte("fecha_dlitro", fechaInicio)
     .lte("fecha_dlitro", fechaFin)
-    .order("fecha_dlitro");
+    .order("fecha_dlitro")
+    .order("id");
 
   if (sucursalId) turnosQ = turnosQ.eq("sucursal_id", sucursalId);
 
-  const { data: turnosRaw, error: turnosErr } = await turnosQ;
-  if (turnosErr) throw new Error(turnosErr.message);
+    return turnosQ.range(from, to);
+  });
 
   const turnos: TurnoExp[] = ((turnosRaw as unknown as Array<{
     id: string;
@@ -257,6 +275,7 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
         .from("pedidos")
         .select("id, turno_id, tipo, estado, promo_tipo, descuento, jarros_entregados, costo_despacho, direccion_entrega")
         .in("turno_id", ids)
+        .order("id")
         .range(from, to),
     );
     pedidos.push(...page);
@@ -276,6 +295,7 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
         .from("pedido_items")
         .select("pedido_id, cantidad, producto_id, producto:producto_id(nombre, tiene_alcohol)")
         .in("pedido_id", ids)
+        .order("id")
         .range(from, to),
     );
     for (const row of page) {
@@ -309,7 +329,7 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
 
   type PagoRow = { turno_id: string; metodo: string; monto: number };
   type GastoRow = { turno_id: string; metodo: string | null; monto: number; concepto: string };
-  type PagoDespRow = { turno_id: string; base_por_horas: number };
+  type PagoDespRow = { turno_id: string; base_por_horas: number; total_a_pagar: number; pagado: boolean };
 
   const pagos: PagoRow[] = [];
   const gastos: GastoRow[] = [];
@@ -318,13 +338,13 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
   for (const ids of chunk(turnoIds, 80)) {
     const [pagPage, gasPage, despPage] = await Promise.all([
       fetchAllPages<PagoRow>("pagos_turno", (from, to) =>
-        supabase.from("pagos_turno").select("turno_id, metodo, monto").in("turno_id", ids).range(from, to),
+        supabase.from("pagos_turno").select("turno_id, metodo, monto").in("turno_id", ids).order("id").range(from, to),
       ),
       fetchAllPages<GastoRow>("gastos_turno", (from, to) =>
-        supabase.from("gastos_turno").select("turno_id, metodo, monto, concepto").in("turno_id", ids).range(from, to),
+        supabase.from("gastos_turno").select("turno_id, metodo, monto, concepto").in("turno_id", ids).order("id").range(from, to),
       ),
       fetchAllPages<PagoDespRow>("pago_despachadores", (from, to) =>
-        supabase.from("pago_despachadores").select("turno_id, base_por_horas").in("turno_id", ids).range(from, to),
+        supabase.from("pago_despachadores").select("turno_id, base_por_horas, total_a_pagar, pagado").in("turno_id", ids).order("id").range(from, to),
       ),
     ]);
     pagos.push(...pagPage);
@@ -383,13 +403,15 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
   const rowsComunas: (string | number)[][] = [];
 
   const esPlataforma = (tipo: string) => tipo === "uber" || tipo === "rappi";
-  const esPropioActivo = (p: PedidoExp) => p.estado !== "cancelado" && !esPlataforma(p.tipo);
+  const esPropioEntregado = (p: PedidoExp) => p.estado === "entregado" && !esPlataforma(p.tipo);
 
   for (const k of sortedKeys) {
     const g = grupos.get(k)!;
     const meta = metaFecha(g.fecha);
     const peds = g.turnoIds.flatMap((id) => pedidosByTurno.get(id) ?? []);
-    const propios = peds.filter(esPropioActivo);
+    const entregados = peds.filter((p) => p.estado === "entregado");
+    const propios = peds.filter(esPropioEntregado);
+    const pendientes = peds.filter((p) => p.estado !== "entregado" && p.estado !== "cancelado");
     const cancelados = peds.filter((p) => p.estado === "cancelado");
 
     let jarrosVendidos = 0;
@@ -407,7 +429,7 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
       const j = n(p.jarros_entregados);
       jarrosSueltos += j % 4;
       // DESPACHO C: cobrado a clientes por despacho (solo entregados)
-      if (p.tipo === "despacho" && p.estado === "entregado") {
+      if ((p.tipo === "despacho" || p.tipo === "delivery") && p.estado === "entregado") {
         despachoC += n(p.costo_despacho);
       }
 
@@ -445,31 +467,38 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
     }
 
     let once = 0;
+    let gastosEfectivo = 0;
     for (const gas of gastos) {
       if (!tipIds.has(gas.turno_id)) continue;
       const m = n(gas.monto);
       if (/once/i.test(gas.concepto ?? "")) once += m;
+      if (gas.metodo === "efectivo" && !(gas.concepto ?? "").startsWith("Ingreso caja chica")) {
+        gastosEfectivo += m;
+      }
     }
 
     // DESPACHO DLITRO: solo base por horas pagada al despachador (sin bono ni despachos cobrados).
     let despachoDlitro = 0;
+    let pagosDespachadoresEfectivo = 0;
     for (const d of pagosDesp) {
       if (!tipIds.has(d.turno_id)) continue;
       despachoDlitro += n(d.base_por_horas);
+      if (d.pagado && n(d.total_a_pagar) > 0) pagosDespachadoresEfectivo += n(d.total_a_pagar);
     }
 
-    // EFECTIVO y EFECTIVO TOTAL CAJA representan todo el efectivo ingresado por ventas.
-    // Los egresos se mantienen separados en sus columnas para evitar mezclar conceptos.
+    // Mismo efectivo neto de la jornada que el cierre, sin incluir el fondo de caja chica.
+    const efectivoFinal = efectivoVentas - gastosEfectivo - pagosDespachadoresEfectivo;
     const efectivoTotalCaja = efectivoVentas;
 
-    const pedidosCount = propios.length;
-    const retiros = propios.filter((p) => p.tipo === "retiro").length;
-    const despachos = propios.filter((p) => p.tipo === "despacho").length;
+    const pedidosCount = entregados.length;
+    const retiros = propios.filter((p) => p.tipo === "retiro" || p.tipo === "local" || p.tipo === "puerta").length;
+    const despachos = propios.filter((p) => p.tipo === "despacho" || p.tipo === "delivery").length;
+    const puerta = entregados.filter((p) => p.tipo === "puerta").length;
     const promos = propios.filter((p) => p.promo_tipo != null || n(p.descuento) > 0).length;
     const trabajador = propios.filter((p) => p.promo_tipo === "trabajador").length;
     const canje = propios.filter((p) => p.promo_tipo === "canje").length;
-    const uber = peds.filter((p) => p.tipo === "uber").length;
-    const rappi = peds.filter((p) => p.tipo === "rappi").length;
+    const uber = entregados.filter((p) => p.tipo === "uber").length;
+    const rappi = entregados.filter((p) => p.tipo === "rappi").length;
 
     rowsResumen.push([
       meta.fecha,
@@ -491,7 +520,7 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
       uber,
       canje,
       sinAlcohol,
-      Math.round(efectivoVentas),
+      Math.round(efectivoFinal),
       Math.round(transferencia),
       Math.round(tarjeta),
       Math.round(despachoC),
@@ -501,6 +530,8 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
       jarrosCancelados,
       rappi,
       Math.round(efectivoTotalCaja),
+      pendientes.length,
+      puerta,
     ]);
 
     const conteoComunas: Record<string, number> = {};
@@ -537,12 +568,39 @@ export async function exportarContadorExcel(params: ExportContadorParams): Promi
   await writeXlsxFile([
     {
       sheet: "Resumen Diario",
-      data: [[...HEADERS_RESUMEN], ...rowsResumen],
+      data: tablaExcel(HEADERS_RESUMEN, rowsResumen),
       stickyRowsCount: 1,
+      stickyColumnsCount: 6,
+      columns: HEADERS_RESUMEN.map((header, index) => ({ width: index === 5 ? 30 : header.length > 16 ? 23 : 17 })),
     },
     {
       sheet: "Comunas",
-      data: [headersComunas, ...rowsComunas],
+      data: tablaExcel(headersComunas, rowsComunas),
+      stickyRowsCount: 1,
+      stickyColumnsCount: 6,
+      columns: headersComunas.map((header, index) => ({ width: index === 5 ? 30 : Math.max(17, header.length + 2) })),
+    },
+    {
+      sheet: "Criterios",
+      data: tablaExcel(["CAMPO", "CRITERIO"], [
+        ["Período", `${fmtFechaExcel(fechaInicio)} al ${fmtFechaExcel(fechaFin)}`],
+        ["Sucursal", sucursalNombreArchivo],
+        ["Fecha", "Fecha operativa del turno (fecha DLITRO), no fecha de creación del pedido."],
+        ["PEDIDOS", "Cantidad de pedidos entregados de todas las modalidades. PEDIDOS = RETIROS + DESPACHOS + UBER + RAPPI. Cada pedido se cuenta una vez, aunque tenga varios productos o pagos."],
+        ["RETIROS", "Pedidos entregados guardados como local, retiro o puerta; todos se incluyen en el total de retiros."],
+        ["DESPACHOS", "Pedidos entregados guardados como despacho o delivery."],
+        ["UBER / RAPPI", "Pedidos entregados de cada plataforma. Pendientes y cancelados no se incluyen."],
+        ["PUERTA", "Desglose de pedidos entregados de tipo puerta, ya incluidos en RETIROS. No se vuelve a sumar a PEDIDOS. Pendientes y cancelados no se incluyen."],
+        ["PEDIDOS PENDIENTES", "Todos los estados distintos de entregado y cancelado, de todas las modalidades."],
+        ["PEDIDOS CANCELADOS", "Pedidos cancelados de todas las modalidades. Separados del total de entregados."],
+        ["Productos, jarros y promociones", "Corresponden a pedidos propios entregados; Uber y Rappi se presentan solo como conteo de pedidos."],
+        ["Comunas", "Despachos propios entregados cuya dirección permite identificar una comuna. Las direcciones sin comuna identificable no aparecen en esas columnas."],
+        ["Métodos de pago", "Importes registrados en pagos del turno. Un pago mixto suma cada importe en su método; no agrega pedidos al conteo."],
+        ["EFECTIVO", "Efectivo neto de la jornada: ventas en efectivo menos gastos en efectivo y pagos realizados a despachadores (total completo, incluidos bonos). No incluye el fondo de caja chica ni descuenta gastos por transferencia o tarjeta. Puede ser negativo si los egresos superan los ingresos."],
+        ["EFECTIVO TOTAL CAJA", "Todo el efectivo ingresado por ventas durante la jornada, antes de descontar egresos. No incluye el fondo de caja chica."],
+        ["DESPACHO DLITRO / ONCE", "Base por horas de despachadores (sin bono), y gastos cuyo concepto contiene once, respectivamente."],
+      ]),
+      columns: [{ width: 37 }, { width: 100 }],
       stickyRowsCount: 1,
     },
   ]).toFile(`dlitro_${safeName}_${fi}_${ff}.xlsx`);

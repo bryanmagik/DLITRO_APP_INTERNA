@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDeliveryLocationFields,
-  calculateDeliveryCost,
+  calculateConfiguredDeliveryCost,
   hasValidDeliveryCoordinates,
   haversineDistanceKm,
+  parseDeliveryCost,
 } from "@/lib/deliveryQuote";
 
 describe("cotización de despacho", () => {
@@ -18,14 +19,52 @@ describe("cotización de despacho", () => {
     expect(haversineDistanceKm(-33.45, -70.66, -33.46, -70.67)).toBeCloseTo(1.45, 1);
   });
 
-  it("aplica la tarifa configurada y conserva el fallback existente", () => {
+  it("aplica la tarifa configurada y no inventa un precio si faltan tarifas", () => {
     const tarifas = [
       { tramo: 1, distancia_desde: 0, distancia_hasta: 3.5, precio: 2500 },
       { tramo: 2, distancia_desde: 3.5, distancia_hasta: 7, precio: 3500 },
     ];
-    expect(calculateDeliveryCost(2, tarifas)).toBe(2500);
-    expect(calculateDeliveryCost(5, tarifas)).toBe(3500);
-    expect(calculateDeliveryCost(2, [])).toBe(2000);
+    expect(calculateConfiguredDeliveryCost(2, tarifas)).toBe(2500);
+    expect(calculateConfiguredDeliveryCost(3.5, tarifas)).toBe(3500);
+    expect(calculateConfiguredDeliveryCost(3.51, tarifas)).toBe(3500);
+    expect(calculateConfiguredDeliveryCost(5, tarifas)).toBe(3500);
+    expect(calculateConfiguredDeliveryCost(5, [])).toBeNull();
+  });
+
+  it("acepta cero kilómetros y tarifas gratuitas configuradas", () => {
+    expect(calculateConfiguredDeliveryCost(0, [
+      { tramo: 1, distancia_desde: 0, distancia_hasta: 3.5, precio: 0 },
+    ])).toBe(0);
+  });
+
+  it.each([-1, NaN, Infinity])("rechaza distancias inválidas: %s", (km) => {
+    expect(calculateConfiguredDeliveryCost(km, [
+      { tramo: 1, distancia_desde: 0, distancia_hasta: 3.5, precio: 2500 },
+    ])).toBeNull();
+  });
+
+  it("conserva el último tramo para distancias superiores al rango", () => {
+    expect(calculateConfiguredDeliveryCost(25, [
+      { tramo: 2, distancia_desde: 3.5, distancia_hasta: 7, precio: 3500 },
+      { tramo: 1, distancia_desde: 0, distancia_hasta: 3.5, precio: 2500 },
+    ])).toBe(3500);
+  });
+
+  it.each([-1, NaN, Infinity, 2.5])("rechaza tarifas inválidas: %s", (precio) => {
+    expect(calculateConfiguredDeliveryCost(2, [
+      { tramo: 1, distancia_desde: 0, distancia_hasta: 3.5, precio },
+    ])).toBeNull();
+  });
+
+  it("distingue un costo sin ingresar de un envío gratuito explícito", () => {
+    expect(parseDeliveryCost("")).toBeNull();
+    expect(parseDeliveryCost("  ")).toBeNull();
+    expect(parseDeliveryCost("0")).toBe(0);
+    expect(parseDeliveryCost("2500")).toBe(2500);
+  });
+
+  it.each(["-1", "2500.5", "2500abc", "Infinity", "NaN"])("rechaza costos manuales inválidos: %s", (value) => {
+    expect(parseDeliveryCost(value)).toBeNull();
   });
 
   it("persiste la ubicación seleccionada al convertir un pedido a despacho", () => {

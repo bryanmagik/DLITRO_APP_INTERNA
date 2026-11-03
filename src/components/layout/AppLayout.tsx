@@ -16,6 +16,7 @@ import {
 
 const rolLabel: Record<string, string> = {
   superadmin: "Superadmin",
+  dueno_dlitro: "Dueño DLITRO",
   admin: "Admin",
   encargado: "Encargado",
   tomador_pedidos: "Tomador",

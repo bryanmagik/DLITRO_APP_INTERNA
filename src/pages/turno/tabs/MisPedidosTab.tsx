@@ -41,7 +41,7 @@ import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { loadGoogleMaps } from "@/lib/googleMaps";
 import {
   buildDeliveryLocationFields,
-  calculateDeliveryCost,
+  calculateConfiguredDeliveryCost,
   hasValidDeliveryCoordinates,
   haversineDistanceKm,
   type TarifaDespacho,
@@ -822,6 +822,7 @@ function PedidoDetalleModal({
     }
 
     let cancelled = false;
+    setDistanciaApi(null);
     (async () => {
       try {
         const googleMaps = await loadGoogleMaps();
@@ -879,11 +880,11 @@ function PedidoDetalleModal({
           : null
       )
       : pedido.distancia_km;
-  const costoDespachoCalculado = distanciaEntrega != null && distanciaEntrega > 0
-    ? calculateDeliveryCost(distanciaEntrega, tarifasDespacho)
-    : 0;
+  const costoDespachoCalculado = distanciaEntrega != null
+    ? calculateConfiguredDeliveryCost(distanciaEntrega, tarifasDespacho)
+    : null;
   const costoDespacho = tipo === "despacho"
-    ? (necesitaNuevaCotizacion ? costoDespachoCalculado : costoDespachoOriginal)
+    ? (necesitaNuevaCotizacion ? (costoDespachoCalculado ?? 0) : costoDespachoOriginal)
     : 0;
   const deltaItems = subtotal - originalItemsTotal;
   const ajusteDespacho = costoDespacho - costoDespachoOriginal; // 0 salvo cambio a retiro
@@ -1354,6 +1355,10 @@ function PedidoDetalleModal({
       toast.error("Selecciona la dirección desde las sugerencias de Google para ubicar el pedido en el mapa");
       return;
     }
+    if (necesitaNuevaCotizacion && costoDespachoCalculado === null) {
+      toast.error("No se pudo calcular el despacho con las tarifas vigentes. Vuelve a abrir el pedido e inténtalo nuevamente.");
+      return;
+    }
     setSaving(true);
     // 1) Reconciliar items: eliminar quitados, insertar nuevos, actualizar cantidades.
     // Se omite por completo si la comanda está bloqueada (en_despacho/entregado/
@@ -1768,7 +1773,7 @@ function PedidoDetalleModal({
                 />
                 {distanciaEntrega != null && distanciaEntrega > 0 && (
                   <p className="text-xs font-mono text-muted-foreground">
-                    Distancia: {distanciaEntrega.toFixed(1)} km · Costo: {fmtCLP(costoDespacho)}
+                    Distancia: {distanciaEntrega.toFixed(1)} km · Costo: {necesitaNuevaCotizacion && costoDespachoCalculado === null ? "Tarifa no disponible" : fmtCLP(costoDespacho)}
                   </p>
                 )}
                 <Label htmlFor="pedido-referencia" className="text-xs">Referencia</Label>
@@ -1891,7 +1896,7 @@ function PedidoDetalleModal({
             </div>
           ) : (
             <>
-              <Button onClick={guardarCambios} disabled={saving || items.length === 0}>
+              <Button onClick={guardarCambios} disabled={saving || items.length === 0 || (necesitaNuevaCotizacion && costoDespachoCalculado === null)}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null} Guardar cambios
               </Button>
               {meta.siguiente && meta.siguiente !== "entregado" && (

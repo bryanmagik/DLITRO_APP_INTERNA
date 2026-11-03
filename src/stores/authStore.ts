@@ -3,6 +3,7 @@ import type { Session, User } from "@supabase/supabase-js";
 
 export type Rol =
   | "superadmin"
+  | "dueno_dlitro"
   | "admin"
   | "encargado"
   | "tomador_pedidos"
@@ -50,6 +51,8 @@ export const useAuthStore = create<AuthState>((set) => ({
 
 export const rutaPorRol = (rol: Rol): string => {
   switch (rol) {
+    case "dueno_dlitro":
+      return "/auditoria";
     case "superadmin":
     case "admin":
       return "/admin/dashboard";
