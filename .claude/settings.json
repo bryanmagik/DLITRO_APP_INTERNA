@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where supabase *)",
+      "Bash(npx --yes supabase --version)"
+    ]
+  }
+}
