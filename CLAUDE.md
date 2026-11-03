@@ -2,6 +2,8 @@
 
 App interna multi-sucursal de DLITRO (delivery de bebidas): pedidos, cocina, despacho, turnos, caja, inventario y logística. Es un sistema real: los cambios afectan pedidos, stock y dinero.
 
+**Al inicio de cada sesión, leer [`docs/estado-actual.md`](docs/estado-actual.md)** (pendientes conocidos y diferencias entre ambientes).
+
 Contexto de negocio y producto (no operativo) en [`docs/contexto/`](#contexto-de-negocio-docscontexto).
 
 ## Stack
@@ -26,11 +28,15 @@ Contexto de negocio y producto (no operativo) en [`docs/contexto/`](#contexto-de
 
 ## Ambientes
 
-| Ambiente | Supabase ref | Carpeta / rama |
-| --- | --- | --- |
-| **Staging** | `suscxwjloggmbsqdlgpj` (Preview Branch `staging-security`) | `DLITRO-STAGING` / `staging/security-hardening` |
-| **Producción** | `uwymxjmyasnlmkitzvej` (DLITRO ULTIMATE) | `DLITRO` / `main` |
+| Ambiente | Supabase ref |
+| --- | --- |
+| **Staging** | `suscxwjloggmbsqdlgpj` (Preview Branch `staging-security`) |
+| **Producción** | `uwymxjmyasnlmkitzvej` (DLITRO ULTIMATE) |
 
+- Copia de trabajo: `C:\dev\DLITRO`.
+- Rama de trabajo: **`staging/security-hardening`**.
+- `main` está desactualizada: **no usarla para builds ni PRs** hasta reconciliarla.
+- `rescate/main-agosto` guarda cambios de agosto sin integrar (incluye el buscador de usuarios). **No mergear sin revisión.**
 - Staging es el ambiente por defecto para desarrollo, migraciones, pruebas de RLS y QA.
 - Antes de cualquier operación sobre la base de datos, confirmar a qué ref apunta. No asumir que staging y producción tienen los mismos datos, políticas, funciones o secretos.
 - Detalle del flujo seguro y comprobaciones Git: [`STAGING.md`](STAGING.md).
@@ -62,9 +68,13 @@ tomado → en_preparacion → listo → en_despacho → entregado
                                               ↘ cancelado
 ```
 
+**`tomado` existe en el enum solo por compatibilidad y NO se usa.** Un pedido nuevo nace en `en_preparacion`: el frontend lo inserta con ese estado de forma explícita (`NuevoPedidoTab.tsx`, `PedidosOrigenPage.tsx`), y los pedidos legacy en `tomado` se migraron con `20260708200000_migrar_pedidos_tomado_a_en_preparacion.sql` (hoy en `supabase/migrations_archive/pre_sanitized_baseline/`). Ojo: el default de la columna `pedidos.estado` sigue siendo `'tomado'`, así que todo insert debe enviar el estado. No crear lógica nueva sobre `tomado`.
+
+Ciclo efectivo: `en_preparacion → listo → en_despacho → entregado / cancelado`.
+
 Reglas de edición (aplicadas por triggers en la BD, no solo en la UI — ver `private.guard_pedido_update_v2` y `private.guard_pedido_items_lifecycle_v2`, migración `20260817164101_order_modification_lifecycle_rule.sql`):
 
-- **`tomado` / `en_preparacion` / `listo`:** el pedido y su comanda (`pedido_items`) se pueden modificar.
+- **`en_preparacion` / `listo`** (y `tomado` legacy): el pedido y su comanda (`pedido_items`) se pueden modificar.
 - **Revisión de cocina:** si se modifica la comanda de un pedido `listo`, vuelve automáticamente a `en_preparacion`, se marca `requiere_revision_cocina = true` y queda registrado en `log_cambios_pedido`. El flag se limpia cuando cocina lo vuelve a marcar `listo`.
 - **`en_despacho`:** la comanda queda congelada. La fila `pedidos` sigue editable (pago, jarros, descuento, despachador, dirección) porque la entrega se concilia en ese estado.
 - **`entregado` / `cancelado`:** bloqueados para todos excepto `admin`/`superadmin`.
@@ -94,6 +104,7 @@ Enum `public.rol_usuario`: `superadmin`, `admin`, `encargado`, `tomador_pedidos`
 - Encabezar con un comentario: regla de negocio, por qué, y decisiones tomadas.
 - Invariantes en la BD (constraints, triggers), no solo en el frontend. Dinero en `numeric` o enteros, nunca float.
 - Aplicar primero en staging (`suscxwjloggmbsqdlgpj`), apuntando explícitamente al ref, sin depender del link local.
+- **No usar `supabase db push`** hasta reconciliar el historial de migraciones entre producción y staging (ver [`docs/estado-actual.md`](docs/estado-actual.md)).
 - `supabase/migrations_archive/` es histórico: no tocar.
 
 ## Tests SQL (`supabase/tests/`)
