@@ -11,6 +11,7 @@ import {
   ESTADO_META, EstadoLogistica, TIPOS_INSUMO, InsumoFull, StockSucRow, estadoStock, fmtFecha,
 } from "@/lib/logistica";
 import InputCajasUnidades from "@/components/InputCajasUnidades";
+import StockColumnasCells from "@/components/StockColumnasCells";
 import { calcularCantidadBase } from "@/components/CantidadFormatoInput";
 import { mlACajasUnidades } from "@/utils/stockUtils";
 

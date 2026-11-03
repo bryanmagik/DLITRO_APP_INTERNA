@@ -87,7 +87,7 @@ export default function TarifasDespachoPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-4 sm:space-y-6 max-w-5xl mx-auto">
       <div>
         <h1 className="text-3xl font-display tracking-wide">Tarifas de Despacho</h1>
         <p className="text-sm text-muted-foreground">Precio cobrado al cliente según la distancia calculada por Google Maps.</p>

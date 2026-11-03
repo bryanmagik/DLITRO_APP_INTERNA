@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Plus, Pencil, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus, Pencil, Loader2, Search, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthStore, type Rol } from "@/stores/authStore";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -22,6 +23,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { filtrarUsuarios } from "@/lib/usuariosBusqueda";
 
 interface Usuario {
   id: string;
@@ -64,6 +66,7 @@ export default function UsuariosPage() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editando, setEditando] = useState<Usuario | null>(null);
+  const [busqueda, setBusqueda] = useState("");
 
   // form
   const [email, setEmail] = useState("");
@@ -161,9 +164,14 @@ export default function UsuariosPage() {
           // Extraer el mensaje real del body de la respuesta (FunctionsHttpError)
           let msg = fnError.message;
           try {
-            const body = await (fnError as any).context?.json?.();
+            const errorContext = fnError as typeof fnError & {
+              context?: { json?: () => Promise<{ error?: string }> };
+            };
+            const body = await errorContext.context?.json?.();
             if (body?.error) msg = body.error;
-          } catch {}
+          } catch {
+            // Conserva el mensaje original cuando la respuesta no contiene JSON válido.
+          }
           throw new Error(msg);
         }
         if (fnData?.error) throw new Error(fnData.error);
@@ -182,10 +190,19 @@ export default function UsuariosPage() {
     }
   };
 
-  const sucursalNombre = (id: string | null) =>
-    id ? sucursales.find((s) => s.id === id)?.nombre ?? "—" : "—";
+  const sucursalNombre = useCallback(
+    (id: string | null) => (id ? sucursales.find((s) => s.id === id)?.nombre ?? "—" : "—"),
+    [sucursales],
+  );
 
-  const rolLabel = (r: Rol) => ROLES.find((x) => x.value === r)?.label ?? r;
+  const rolLabel = useCallback((r: Rol) => ROLES.find((x) => x.value === r)?.label ?? r, []);
+
+  const usuariosFiltrados = useMemo(
+    () => filtrarUsuarios(usuarios, busqueda, rolLabel, sucursalNombre),
+    [usuarios, busqueda, rolLabel, sucursalNombre],
+  );
+
+  const hayBusqueda = busqueda.trim().length > 0;
 
   if (perfil && !["superadmin", "admin"].includes(perfil.rol)) {
     return <p className="text-muted-foreground">No tenés permisos para ver esta página.</p>;
@@ -193,9 +210,9 @@ export default function UsuariosPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl text-foreground tracking-wide">Usuarios</h1>
+          <h1 className="font-display text-3xl sm:text-4xl text-foreground tracking-wide">Usuarios</h1>
           <p className="text-muted-foreground text-sm">Gestioná todo el equipo dlitro</p>
         </div>
         <Button onClick={abrirNuevo} className="bg-primary text-primary-foreground hover:bg-primary/90">
@@ -205,17 +222,64 @@ export default function UsuariosPage() {
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="border-b border-border p-3 sm:p-4">
+          <div className="w-full max-w-xl space-y-2">
+            <Label htmlFor="buscar-usuarios" className="text-sm font-medium text-foreground">
+              Buscar usuarios
+            </Label>
+            <div className="relative">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                id="buscar-usuarios"
+                type="search"
+                value={busqueda}
+                onChange={(event) => setBusqueda(event.target.value)}
+                placeholder="Nombre, usuario, rol o sucursal"
+                className="h-11 bg-background pl-9 pr-12 [&::-webkit-search-cancel-button]:hidden"
+                autoComplete="off"
+              />
+              {busqueda.length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setBusqueda("")}
+                  aria-label="Limpiar búsqueda de usuarios"
+                  className="absolute right-0 top-1/2 h-11 w-11 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            {hayBusqueda && usuariosFiltrados.length > 0 && (
+              <p className="text-xs text-muted-foreground" aria-live="polite">
+                {usuariosFiltrados.length} {usuariosFiltrados.length === 1 ? "coincidencia" : "coincidencias"}
+              </p>
+            )}
+          </div>
+        </div>
         {loading ? (
           <div className="p-12 flex items-center justify-center text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin mr-2" />
             Cargando…
           </div>
         ) : usuarios.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground">
+          <div className="p-8 sm:p-12 text-center text-muted-foreground" role="status">
             No hay usuarios todavía. Creá el primero.
           </div>
+        ) : usuariosFiltrados.length === 0 ? (
+          <div className="p-8 sm:p-12 text-center" role="status" aria-live="polite">
+            <p className="font-medium text-foreground">No encontramos usuarios</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Probá con otro nombre, usuario, rol o sucursal.
+            </p>
+          </div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
             <thead className="bg-secondary/40 border-b border-border">
               <tr className="text-left text-muted-foreground uppercase text-xs tracking-wider">
                 <th className="px-4 py-3">Nombre</th>
@@ -227,7 +291,7 @@ export default function UsuariosPage() {
               </tr>
             </thead>
             <tbody>
-              {usuarios.map((u) => (
+              {usuariosFiltrados.map((u) => (
                 <tr key={u.id} className="border-b border-border last:border-0 hover:bg-secondary/20">
                   <td className="px-4 py-3">
                     <div className="font-medium text-foreground">
@@ -256,14 +320,20 @@ export default function UsuariosPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <Button variant="ghost" size="sm" onClick={() => abrirEditar(u)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => abrirEditar(u)}
+                      aria-label={`Editar ${nombreUsuario(u)}`}
+                    >
                       <Pencil className="h-4 w-4" />
                     </Button>
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
 
@@ -273,6 +343,11 @@ export default function UsuariosPage() {
             <DialogTitle className="font-display text-2xl tracking-wide">
               {editando ? "Editar usuario" : "Nuevo usuario"}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              {editando
+                ? "Modificá los datos del usuario seleccionado."
+                : "Completá los datos para crear un nuevo usuario."}
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={guardar} className="space-y-4">
             {!editando && (
@@ -301,7 +376,7 @@ export default function UsuariosPage() {
                 </div>
               </>
             )}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label className="label-upper">Nombre</Label>
                 <Input value={nombre} onChange={(e) => setNombre(e.target.value)} required className="bg-background" />
@@ -311,7 +386,7 @@ export default function UsuariosPage() {
                 <Input value={apellido} onChange={(e) => setApellido(e.target.value)} className="bg-background" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label className="label-upper">RUT</Label>
                 <Input value={rut} onChange={(e) => setRut(e.target.value)} className="bg-background" />
@@ -321,7 +396,7 @@ export default function UsuariosPage() {
                 <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} className="bg-background" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label className="label-upper">Rol</Label>
                 <Select value={rol} onValueChange={(v) => setRol(v as Rol)}>

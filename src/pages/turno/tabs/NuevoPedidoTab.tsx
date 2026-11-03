@@ -22,6 +22,7 @@ import mojitoImg from "@/assets/mojito.jpg";
 import coladaImg from "@/assets/colada.jpg";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { loadGoogleMaps } from "@/lib/googleMaps";
+import type { TablesInsert } from "@/integrations/supabase/types";
 
 interface Categoria { id: string; nombre: string; orden: number | null }
 interface Producto {
@@ -671,7 +672,7 @@ export default function NuevoPedidoTab({ turno }: { turno: Turno }) {
           ? "canje"
           : null) as "trabajador" | "jarra_dorada" | "cumpleanos" | "canje" | null,
         estado: "en_preparacion",
-      };
+      } satisfies TablesInsert<"pedidos">;
       const { data: pedido, error } = await supabase.from("pedidos").insert(payload).select().single();
       if (error) throw error;
 

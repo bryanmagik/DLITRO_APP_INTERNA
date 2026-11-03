@@ -438,7 +438,7 @@ export default function ContadorPage() {
         hora_agendada,
         jarros_entregados,
         created_at,
-        usuarios:despachador_id(nombre, apellido, nombre_completo),
+        usuarios:usuarios!pedidos_despachador_id_fkey(nombre, apellido, nombre_completo),
         pedido_items(
           cantidad,
           precio_unitario,
@@ -997,7 +997,7 @@ function CalendarioGrid({
           const esHoy = fecha === hoyStr;
           const dotColor = filtroCuadratura === "todos"
             ? (dotColorPorFecha.get(fecha) ?? "bg-success")
-            : (filtroCuadratura !== "todos" ? CUADRATURA_CONFIG[filtroCuadratura].dotColor : "bg-success");
+            : CUADRATURA_CONFIG[filtroCuadratura].dotColor;
 
           return (
             <button

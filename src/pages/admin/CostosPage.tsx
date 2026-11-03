@@ -225,9 +225,9 @@ export default function CostosPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4 sm:space-y-6 max-w-[1400px] mx-auto">
       <div>
-        <h1 className="text-2xl font-bold">Costos por Trago</h1>
+        <h1 className="text-3xl sm:text-4xl font-display tracking-wide">Costos por Trago</h1>
         <p className="text-sm text-muted-foreground">
           Gestión de precios, costos de insumos y recetas.
         </p>

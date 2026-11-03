@@ -209,7 +209,7 @@ export default function PedidosAdminPage() {
   }
 
   return (
-    <div className="p-6 space-y-5 max-w-[1400px] mx-auto">
+    <div className="space-y-4 sm:space-y-5 max-w-[1400px] mx-auto">
       <div>
         <h1 className="text-3xl font-display tracking-wide">📋 Pedidos</h1>
         <p className="text-sm text-muted-foreground">

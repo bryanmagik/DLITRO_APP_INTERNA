@@ -164,7 +164,7 @@ function SucursalModal({
           </div>
 
           {/* Lat / Lng (readonly) */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="s-lat">Latitud</Label>
               <Input
@@ -267,9 +267,9 @@ export default function SucursalesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl text-foreground tracking-wide">Sucursales</h1>
+          <h1 className="font-display text-3xl sm:text-4xl text-foreground tracking-wide">Sucursales</h1>
           <p className="text-muted-foreground text-sm">Sucursales dlitro activas en Santiago</p>
         </div>
         <Button onClick={abrirNueva} className="shrink-0">

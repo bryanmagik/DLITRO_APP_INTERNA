@@ -16,6 +16,22 @@ interface PedidoSeguimiento {
   created_at: string | null;
 }
 
+function isPedidoSeguimiento(data: unknown): data is PedidoSeguimiento {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+  const record = data as Record<string, unknown>;
+  return (
+    typeof record.id === "string"
+    && (typeof record.numero_pedido === "number" || record.numero_pedido === null)
+    && typeof record.cliente_nombre === "string"
+    && typeof record.tipo === "string"
+    && typeof record.estado === "string"
+    && typeof record.estado_confirmacion === "string"
+    && (typeof record.tiempo_estimado_minutos === "number" || record.tiempo_estimado_minutos === null)
+    && (typeof record.motivo_rechazo === "string" || record.motivo_rechazo === null)
+    && (typeof record.created_at === "string" || record.created_at === null)
+  );
+}
+
 function labelTiempo(minutos: number | null): string | null {
   if (minutos === null || minutos === undefined) return null;
   if (minutos === 0) return "Inmediato";
@@ -70,12 +86,12 @@ export default function SeguimientoPedidoPage() {
       setLoading(false);
       return;
     }
-    if (!data) {
+    if (!data || !isPedidoSeguimiento(data)) {
       setError("No encontramos este pedido.");
       setLoading(false);
       return;
     }
-    setPedido(data as PedidoSeguimiento);
+    setPedido(data);
     setError(null);
     setLoading(false);
   };

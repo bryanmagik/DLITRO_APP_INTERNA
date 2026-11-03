@@ -1340,6 +1340,41 @@ export type Database = {
           },
         ]
       }
+      promociones_precio: {
+        Row: {
+          activo: boolean | null
+          created_at: string | null
+          id: string
+          nombre: string | null
+          precio_promo: number
+          producto_id: string
+        }
+        Insert: {
+          activo?: boolean | null
+          created_at?: string | null
+          id?: string
+          nombre?: string | null
+          precio_promo: number
+          producto_id: string
+        }
+        Update: {
+          activo?: boolean | null
+          created_at?: string | null
+          id?: string
+          nombre?: string | null
+          precio_promo?: number
+          producto_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "promociones_precio_producto_id_fkey"
+            columns: ["producto_id"]
+            isOneToOne: false
+            referencedRelation: "productos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       recetas: {
         Row: {
           cantidad: number
@@ -1798,6 +1833,7 @@ export type Database = {
           efectivo_declarado_sobre: number | null
           efectivo_sistema: number | null
           estado: Database["public"]["Enums"]["estado_turno"]
+          estado_cuadratura: string | null
           fecha_dlitro: string | null
           id: string
           numero_ultimo_pedido: number | null
@@ -1818,6 +1854,7 @@ export type Database = {
           efectivo_declarado_sobre?: number | null
           efectivo_sistema?: number | null
           estado?: Database["public"]["Enums"]["estado_turno"]
+          estado_cuadratura?: string | null
           fecha_dlitro?: string | null
           id?: string
           numero_ultimo_pedido?: number | null
@@ -1838,6 +1875,7 @@ export type Database = {
           efectivo_declarado_sobre?: number | null
           efectivo_sistema?: number | null
           estado?: Database["public"]["Enums"]["estado_turno"]
+          estado_cuadratura?: string | null
           fecha_dlitro?: string | null
           id?: string
           numero_ultimo_pedido?: number | null

@@ -134,8 +134,9 @@ const Sidebar = React.forwardRef<
     side?: "left" | "right";
     variant?: "sidebar" | "floating" | "inset";
     collapsible?: "offcanvas" | "icon" | "none";
+    mobileWidth?: string;
   }
->(({ side = "left", variant = "sidebar", collapsible = "offcanvas", className, children, ...props }, ref) => {
+>(({ side = "left", variant = "sidebar", collapsible = "offcanvas", mobileWidth, className, children, ...props }, ref) => {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
 
   if (collapsible === "none") {
@@ -156,15 +157,21 @@ const Sidebar = React.forwardRef<
         <SheetContent
           data-sidebar="sidebar"
           data-mobile="true"
-          className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          className="mobile-sidebar-drawer left-0 right-auto top-0 bottom-0 h-dvh w-[--sidebar-width] max-w-none translate-x-0 overflow-hidden bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
           style={
             {
-              "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+              "--sidebar-width": mobileWidth ?? SIDEBAR_WIDTH_MOBILE,
             } as React.CSSProperties
           }
           side={side}
         >
-          <div className="flex h-full w-full flex-col">{children}</div>
+          <div
+            data-state="expanded"
+            data-collapsible=""
+            className="mobile-sidebar-content flex h-full w-full min-w-0 flex-col overflow-hidden"
+          >
+            {children}
+          </div>
         </SheetContent>
       </Sheet>
     );
@@ -217,8 +224,10 @@ const Sidebar = React.forwardRef<
 Sidebar.displayName = "Sidebar";
 
 const SidebarTrigger = React.forwardRef<React.ElementRef<typeof Button>, React.ComponentProps<typeof Button>>(
-  ({ className, onClick, ...props }, ref) => {
-    const { toggleSidebar } = useSidebar();
+  ({ className, onClick, "aria-label": ariaLabel, ...props }, ref) => {
+    const { isMobile, openMobile, state, toggleSidebar } = useSidebar();
+    const isOpen = isMobile ? openMobile : state === "expanded";
+    const accessibleLabel = ariaLabel ?? `${isOpen ? "Cerrar" : "Abrir"} menú de módulos`;
 
     return (
       <Button
@@ -226,6 +235,7 @@ const SidebarTrigger = React.forwardRef<React.ElementRef<typeof Button>, React.C
         data-sidebar="trigger"
         variant="ghost"
         size="icon"
+        aria-label={accessibleLabel}
         className={cn("h-7 w-7", className)}
         onClick={(event) => {
           onClick?.(event);
@@ -234,7 +244,7 @@ const SidebarTrigger = React.forwardRef<React.ElementRef<typeof Button>, React.C
         {...props}
       >
         <PanelLeft />
-        <span className="sr-only">Toggle Sidebar</span>
+        <span className="sr-only">{accessibleLabel}</span>
       </Button>
     );
   },

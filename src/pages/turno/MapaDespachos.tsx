@@ -282,7 +282,8 @@ export default function MapaDespachos() {
     (window as any).__dlitroTogglePedido = (id: string) => {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        next.has(id) ? next.delete(id) : next.add(id);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
         return next;
       });
     };
@@ -606,7 +607,8 @@ export default function MapaDespachos() {
     e.stopPropagation();
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };

@@ -130,10 +130,12 @@ const menuPorRol: Record<Rol, Item[]> = {
 };
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const { perfil } = useAuthStore();
   const { pathname } = useLocation();
+  const isResponsiveMobile = isMobile && !pathname.startsWith("/turno");
+  const showExpandedContent = isResponsiveMobile || !collapsed;
 
   const items = perfil ? menuPorRol[perfil.rol] ?? [] : [];
   const sucursalTomador = perfil?.rol === "tomador_pedidos" ? perfil?.sucursal_id : null;
@@ -141,22 +143,36 @@ export function AppSidebar() {
   const { count: pendientesNely } = usePedidosOrigenPendientes(sucursalTomador, "nely");
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarContent className="bg-sidebar">
-        <div className="px-4 py-5 border-b border-sidebar-border flex items-center justify-center">
+    <Sidebar
+      collapsible="icon"
+      mobileWidth={isResponsiveMobile ? "min(18rem, 88vw)" : undefined}
+      className="border-r border-sidebar-border"
+    >
+      <SidebarContent
+        className={`bg-sidebar ${isResponsiveMobile ? "gap-0 overflow-y-auto overflow-x-hidden" : ""}`}
+      >
+        <div
+          className={`border-b border-sidebar-border flex items-center justify-center ${
+            isResponsiveMobile ? "shrink-0 px-4 py-2" : "px-4 py-5"
+          }`}
+        >
           <div
-            className={`rounded-full bg-white shadow-md flex items-center justify-center overflow-hidden ${
-              collapsed ? "h-8 w-8" : "h-16 w-16"
+            className={`bg-white shadow-md flex items-center justify-center ${
+              isResponsiveMobile
+                ? "h-16 w-24 max-w-full rounded-xl p-1"
+                : showExpandedContent
+                  ? "h-16 w-16 rounded-full overflow-hidden"
+                  : "h-8 w-8 rounded-full overflow-hidden"
             }`}
           >
             <img
               src={DLITRO_LOGO}
               alt="dlitro"
-              className="h-full w-full object-contain"
+              className="block h-full w-full object-contain object-center"
             />
           </div>
         </div>
-        <SidebarGroup>
+        <SidebarGroup className={isResponsiveMobile ? "shrink-0 p-2 pt-0" : undefined}>
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => {
@@ -167,9 +183,14 @@ export function AppSidebar() {
                 const showBadge = showBadgeOnline || showBadgeNely;
                 return (
                   <SidebarMenuItem key={item.url}>
-                    <SidebarMenuButton asChild isActive={active}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={active}
+                      className={isResponsiveMobile ? "!h-11 !w-full !translate-x-0 !p-2" : undefined}
+                    >
                       <NavLink
                         to={item.url}
+                        onClick={() => isResponsiveMobile && setOpenMobile(false)}
                         className={`flex items-center gap-3 ${
                           active
                             ? "bg-sidebar-accent text-primary font-semibold"
@@ -177,7 +198,7 @@ export function AppSidebar() {
                         }`}
                       >
                         <item.icon className="h-4 w-4 shrink-0" />
-                        {!collapsed && (
+                        {showExpandedContent && (
                           <span className="uppercase tracking-wider text-xs flex-1">{item.title}</span>
                         )}
                         {showBadge && (

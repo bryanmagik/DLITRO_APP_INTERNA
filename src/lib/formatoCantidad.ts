@@ -1,4 +1,3 @@
-import type { InsumoFull } from "./logistica";
 import {
   cajasUnidadesAMl,
   calcStockColumnas,
@@ -9,10 +8,7 @@ import {
 } from "@/utils/stockUtils";
 
 /** Insumo subset with the format-related fields. */
-export type InsumoFormato = Pick<
-  InsumoFull,
-  "formato_mayor" | "unidades_por_formato" | "ml_por_unidad" | "unidad"
->;
+export type InsumoFormato = InsumoStockFields;
 
 export function formatearCantidad(cantidadBase: number, insumo: InsumoFormato | null | undefined): string {
   return formatearStockDisplay(cantidadBase, insumo) ?? `0 ${insumo?.unidad || "unidades"}`;

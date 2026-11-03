@@ -29,6 +29,7 @@ export default function AppLayout() {
   const { perfil, sucursalNombre } = useAuthStore();
   const { pathname } = useLocation();
   const glass = !pathname.startsWith("/turno");
+  const isDesktopOnlyTurno = pathname.startsWith("/turno");
   const turnoInfo = useTurnoHeaderStore((s) => s.info);
 
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -40,6 +41,11 @@ export default function AppLayout() {
     localStorage.setItem("dlitro-theme", theme);
   }, [theme]);
 
+  useEffect(() => {
+    document.body.classList.toggle("portal-responsive-route", !isDesktopOnlyTurno);
+    return () => document.body.classList.remove("portal-responsive-route");
+  }, [isDesktopOnlyTurno]);
+
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
   const handleLogout = async () => {
@@ -48,7 +54,7 @@ export default function AppLayout() {
   };
 
   return (
-    <SidebarProvider>
+    <SidebarProvider className={isDesktopOnlyTurno ? "turno-desktop-layout" : "portal-responsive-layout"}>
       <div
         className={`min-h-screen flex w-full bg-background ${
           glass ? `glass-theme glass-${theme}` : ""
@@ -56,8 +62,8 @@ export default function AppLayout() {
       >
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="app-header h-14 border-b border-border bg-card flex items-center px-4 gap-4 sticky top-0 z-30">
-            <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
+          <header className={`app-header border-b border-border bg-card flex items-center sticky top-0 z-30 ${isDesktopOnlyTurno ? "h-14 px-4 gap-4" : "min-h-14 px-2.5 sm:px-4 gap-2 sm:gap-4"}`}>
+            <SidebarTrigger className={`text-muted-foreground hover:text-foreground ${isDesktopOnlyTurno ? "" : "h-11 w-11 shrink-0"}`} />
             <div className="flex-1 flex items-center gap-3 min-w-0">
               {sucursalNombre && (
                 <span className="font-display text-xl text-primary truncate">
@@ -145,13 +151,14 @@ export default function AppLayout() {
                 variant="ghost"
                 size="sm"
                 onClick={handleLogout}
-                className="text-muted-foreground hover:text-destructive"
+                className={`text-muted-foreground hover:text-destructive ${isDesktopOnlyTurno ? "" : "h-11 w-11 p-0"}`}
+                aria-label="Cerrar sesión"
               >
                 <LogOut className="h-4 w-4" />
               </Button>
             </div>
           </header>
-          <main className="flex-1 p-6 overflow-auto">
+          <main className={`flex-1 overflow-auto ${isDesktopOnlyTurno ? "p-6" : "p-3 sm:p-4 lg:p-6"}`}>
             <Outlet />
           </main>
         </div>

@@ -18,9 +18,9 @@ export interface InsumoFull {
   nombre: string;
   unidad: string | null;
   tipo: string;
-  formato_mayor?: string | null;
-  unidades_por_formato?: number | null;
-  ml_por_unidad?: number | null;
+  formato_mayor: string | null;
+  unidades_por_formato: number | null;
+  ml_por_unidad: number | null;
 }
 
 export interface StockSucRow {

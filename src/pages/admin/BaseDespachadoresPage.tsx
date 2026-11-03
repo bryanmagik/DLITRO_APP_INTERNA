@@ -180,10 +180,10 @@ export default function BaseDespachadoresPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4 sm:space-y-6 max-w-[1400px] mx-auto">
       <div className="flex items-center gap-3">
         <Bike className="h-7 w-7 text-primary" />
-        <h1 className="font-display text-3xl text-foreground">Base Despachadores</h1>
+        <h1 className="font-display text-3xl sm:text-4xl text-foreground break-words">Base Despachadores</h1>
       </div>
 
       {/* Sección 1: Tarifas */}

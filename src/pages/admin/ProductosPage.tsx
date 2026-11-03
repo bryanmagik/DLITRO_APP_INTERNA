@@ -255,7 +255,7 @@ function NuevoProductoModal({
           <div className="space-y-6 py-1">
 
             {/* ── Datos del producto ───────────────────────────────────── */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Nombre — ancho completo */}
               <div className="col-span-2 space-y-1.5">
                 <Label htmlFor="np-nombre">Nombre *</Label>
@@ -631,9 +631,9 @@ export default function ProductosPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl text-foreground tracking-wide">Productos y precios</h1>
+          <h1 className="font-display text-3xl sm:text-4xl text-foreground tracking-wide">Productos y precios</h1>
           <p className="text-muted-foreground text-sm">Catálogo completo dlitro</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">

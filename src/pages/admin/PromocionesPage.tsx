@@ -392,7 +392,7 @@ export default function PromocionesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-4xl text-foreground tracking-wide">Promociones</h1>
+        <h1 className="font-display text-3xl sm:text-4xl text-foreground tracking-wide">Promociones</h1>
         <p className="text-muted-foreground text-sm">Configura las promociones activas del catálogo</p>
       </div>
 

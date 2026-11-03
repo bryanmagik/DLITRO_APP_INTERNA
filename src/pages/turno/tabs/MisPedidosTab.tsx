@@ -1764,7 +1764,12 @@ function PedidoDetalleModal({
                   <label key={s.id} className="flex items-center gap-2 p-2 rounded-md bg-background border border-border cursor-pointer hover:border-primary">
                     <Checkbox
                       checked={extrasSel.has(s.id)}
-                      onCheckedChange={() => setExtrasSel((st) => { const n = new Set(st); n.has(s.id) ? n.delete(s.id) : n.add(s.id); return n; })}
+                      onCheckedChange={() => setExtrasSel((st) => {
+                        const next = new Set(st);
+                        if (next.has(s.id)) next.delete(s.id);
+                        else next.add(s.id);
+                        return next;
+                      })}
                     />
                     <span className="flex-1 text-sm">{formatSaborExtra(s.nombre)}</span>
                     <span className="text-xs font-mono text-muted-foreground">+{fmtCLP(s.precio)}</span>

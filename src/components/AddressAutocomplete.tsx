@@ -3,15 +3,6 @@ import { isGoogleMapsConfigured, loadGoogleMaps } from "@/lib/googleMaps";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
 
-interface Suggestion {
-  placePrediction: {
-    toPlace: () => { fetchFields: (opts: { fields: string[] }) => Promise<void>; formattedAddress?: string; location?: { lat: () => number; lng: () => number } | { lat: number; lng: number } };
-    text?: { text?: string };
-    mainText?: { text?: string };
-    secondaryText?: { text?: string };
-  };
-}
-
 interface Props {
   value: string;
   onChange: (v: string) => void;
@@ -26,7 +17,7 @@ export default function AddressAutocomplete({
   value, onChange, onSelect, placeholder, className, hasError, regionCode = "cl",
 }: Props) {
   const [mapsOk, setMapsOk] = useState<boolean | null>(null);
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<google.maps.places.AutocompleteSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const sessionTokenRef = useRef<unknown>(null);
@@ -66,10 +57,10 @@ export default function AddressAutocomplete({
         }
         const { suggestions: sugs } = await places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
           input: v,
-          sessionToken: sessionTokenRef.current as google.maps.AutocompleteSessionToken,
+          sessionToken: sessionTokenRef.current as google.maps.places.AutocompleteSessionToken,
           includedRegionCodes: [regionCode],
         });
-        setSuggestions((sugs as Suggestion[]) || []);
+        setSuggestions(sugs || []);
         setOpen(true);
       } catch (e) {
         console.error("[gmaps autocomplete]", e);
@@ -81,14 +72,14 @@ export default function AddressAutocomplete({
     }, 250);
   };
 
-  const pick = async (sug: Suggestion) => {
+  const pick = async (sug: google.maps.places.AutocompleteSuggestion) => {
     try {
       const place = sug.placePrediction.toPlace();
       await place.fetchFields({ fields: ["formattedAddress", "location"] });
       const addr = place.formattedAddress || sug.placePrediction.text?.text || "";
       const loc = place.location;
-      const lat = typeof loc?.lat === "function" ? loc.lat() : (loc as { lat: number })?.lat;
-      const lng = typeof loc?.lng === "function" ? loc.lng() : (loc as { lng: number })?.lng;
+      const lat = loc?.lat();
+      const lng = loc?.lng();
       onChange(addr);
       onSelect({ address: addr, lat: Number(lat), lng: Number(lng) });
       setOpen(false);

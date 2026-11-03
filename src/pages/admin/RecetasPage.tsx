@@ -119,7 +119,7 @@ export default function RecetasPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-4xl text-foreground tracking-wide">Recetas</h1>
+        <h1 className="font-display text-3xl sm:text-4xl text-foreground tracking-wide">Recetas</h1>
         <p className="text-muted-foreground text-sm">Insumos consumidos por cada producto</p>
       </div>
 
@@ -151,7 +151,7 @@ export default function RecetasPage() {
         </div>
 
         {/* Panel receta */}
-        <div className="bg-card border border-border rounded-xl p-6">
+        <div className="bg-card border border-border rounded-xl p-4 sm:p-6">
           {!selected ? (
             <div className="text-muted-foreground text-center py-12">
               Seleccioná un producto para ver su receta

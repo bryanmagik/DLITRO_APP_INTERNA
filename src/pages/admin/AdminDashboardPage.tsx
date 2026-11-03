@@ -282,7 +282,7 @@ function MetricCard({
 }: {
   title: string;
   value: string;
-  icon: ComponentType<{ className?: string }>;
+  icon: ComponentType<{ className?: string; style?: React.CSSProperties }>;
   delta: number | null;
   vsLabel: string;
   loading: boolean;
