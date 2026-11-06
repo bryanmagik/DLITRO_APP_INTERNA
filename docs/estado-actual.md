@@ -18,9 +18,11 @@ Ambientes: staging `suscxwjloggmbsqdlgpj` · producción `uwymxjmyasnlmkitzvej`.
 ### Seguridad / base de datos
 
 - **Producción no tiene el hardening de funciones que ya está en staging:**
-  - 7 funciones sin `search_path` fijo.
-  - Extensión `pg_trgm` instalada en el schema `public`.
-  - `is_superadmin` y `get_turno_abierto` ejecutables por `authenticated`.
+  - 7 funciones sin `search_path` fijo. — **Preparado, pendiente de aplicar.**
+  - `is_superadmin` y `get_turno_abierto` ejecutables por `authenticated`. — **Preparado, pendiente de aplicar.**
+  - Extensión `pg_trgm` instalada en el schema `public`. — Sin preparar (fuera de alcance del hardening).
+
+  Archivos en `supabase/migrations_production_emergency/`: `20261103_harden_function_search_path_prod.sql`, su `_ROLLBACK.sql` y `_VERIFY.sql`. Antes de aplicar: correr VERIFY y guardar la salida como snapshot; el ROLLBACK asume un ACL previo que debe coincidir con ese snapshot.
 - **Leaked password protection desactivada** en ambos ambientes (Supabase Auth).
 
 ### Migraciones
